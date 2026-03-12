@@ -165,13 +165,15 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "fastapi" },
     { name = "jinja2" },
+    { name = "pyrofork" },
     { name = "python-multipart" },
+    { name = "tgcrypto" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 bot = [
-    { name = "pyrogram" },
+    { name = "pyrofork" },
     { name = "tgcrypto" },
 ]
 transcribe = [
@@ -192,8 +194,10 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.100" },
     { name = "funasr", marker = "extra == 'transcribe'", specifier = ">=1.0" },
     { name = "jinja2", specifier = ">=3.1" },
-    { name = "pyrogram", marker = "extra == 'bot'", specifier = ">=2.0" },
+    { name = "pyrofork", specifier = ">=2.3.69" },
+    { name = "pyrofork", marker = "extra == 'bot'", specifier = ">=2.3" },
     { name = "python-multipart", specifier = ">=0.0.6" },
+    { name = "tgcrypto", specifier = ">=1.2.5" },
     { name = "tgcrypto", marker = "extra == 'bot'", specifier = ">=1.2" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.20" },
@@ -1327,6 +1331,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pymediainfo-pyrofork"
+version = "6.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/43/ebfd048e84bb264bb133d545312e35b49638bcd7d5ad973c023e0026a36b/pymediainfo_pyrofork-6.0.2.tar.gz", hash = "sha256:fce9402edfd1fa09aba7b3cac4c41ba7fcf6820e561b4db4f9c1a1a68c487c36", size = 446514, upload-time = "2024-10-08T14:31:39.531Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/16/7c2b2f969e84e5f196809c10da6c847c505fb722b9d636bf6f6bf8f2e919/pymediainfo_pyrofork-6.0.2-py2.py3-none-any.whl", hash = "sha256:674fa8e53de861635b9dc4f77c2ad712306a798bf28864952503bf328210c4c3", size = 9356, upload-time = "2024-10-08T14:31:37.054Z" },
+]
+
+[[package]]
 name = "pynndescent"
 version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1343,16 +1356,17 @@ wheels = [
 ]
 
 [[package]]
-name = "pyrogram"
-version = "2.0.106"
+name = "pyrofork"
+version = "2.3.69"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyaes" },
+    { name = "pymediainfo-pyrofork" },
     { name = "pysocks" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c8/8e/5d09eca17271320bb9a95e50b7e053770aee85b3fd338e8267e7b6b280ae/Pyrogram-2.0.106.tar.gz", hash = "sha256:30202995758fcb6e0f91224704ab7fedefea454297724bd70a6a71a23748c16f", size = 345997, upload-time = "2023-04-30T18:24:45.506Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/da/c6e44522450483ca4a42130759a8dbc96e28c35e7ad041e16aca85c45756/pyrofork-2.3.69.tar.gz", hash = "sha256:945b30d50b31819a903749825e2748ac5a6af1e073bf97da8c53e510ff3ed58d", size = 506694, upload-time = "2025-12-10T18:35:57.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/88/502ec24914d208e06baa6f27ff812f46815bb4f302018ad848ebf518abdf/Pyrogram-2.0.106-py3-none-any.whl", hash = "sha256:32b62b3d93030b1080cbe45b88c0e8790cf4e2179cf3321ede810d48edf97bc7", size = 3573685, upload-time = "2023-04-30T18:24:41.986Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/ec/9395a0d3196a388a0ccd0994cf2113068b3740ab2615d8bbc1c12d762e42/pyrofork-2.3.69-py3-none-any.whl", hash = "sha256:13f7a7fbfa5ede230df6b6df10fcc2c6b33b4c3d75bf2088a7d32f41621df8e4", size = 5270720, upload-time = "2025-12-10T18:35:55.246Z" },
 ]
 
 [[package]]
