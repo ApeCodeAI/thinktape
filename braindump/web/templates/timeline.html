@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}braindump — timeline{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <form class="search-form" method="get" action="/">
+        <input type="text" name="q" value="{{ current_q }}" placeholder="Search notes..." class="search-input">
+        <select name="type" class="filter-select">
+            <option value="">All types</option>
+            <option value="text" {% if current_type == 'text' %}selected{% endif %}>Text</option>
+            <option value="image" {% if current_type == 'image' %}selected{% endif %}>Image</option>
+            <option value="video" {% if current_type == 'video' %}selected{% endif %}>Video</option>
+            <option value="audio" {% if current_type == 'audio' %}selected{% endif %}>Audio</option>
+        </select>
+        {% if all_tags %}
+        <select name="tag" class="filter-select">
+            <option value="">All tags</option>
+            {% for t in all_tags %}
+            <option value="{{ t }}" {% if current_tag == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+        <button type="submit" class="btn btn-search">Search</button>
+    </form>
+    <div class="stats-bar">{{ total }} notes</div>
+</div>
+
+{% for date, notes in grouped_notes.items() %}
+<div class="date-group">
+    <h2 class="date-header">{{ date }}</h2>
+    {% for note in notes %}
+    <div class="note-card" data-id="{{ note.id }}">
+        <div class="note-meta">
+            <span class="note-time">{{ note.created_at[11:16] }}</span>
+            <span class="note-source">{{ note.source }}</span>
+            {% if note.tags %}
+            <span class="note-tags">
+                {% for tag in note.tags.split(',') %}
+                {% if tag.strip() %}
+                <a href="/?tag={{ tag.strip() }}" class="tag">#{{ tag.strip() }}</a>
+                {% endif %}
+                {% endfor %}
+            </span>
+            {% endif %}
+        </div>
+
+        <div class="note-content">
+            {% if note.content %}
+            <div class="note-text">{{ note.content | truncate(300) }}</div>
+            {% endif %}
+
+            {% if note.attachments %}
+            <div class="note-media">
+                {% for att in note.attachments %}
+                {% if att.media_type == 'image' %}
+                <img src="/media/{{ att.file_path[6:] }}" alt="" class="note-thumb" loading="lazy">
+                {% elif att.media_type == 'video' %}
+                <video src="/media/{{ att.file_path[6:] }}" controls preload="none" class="note-video"></video>
+                {% elif att.media_type == 'audio' %}
+                <audio src="/media/{{ att.file_path[6:] }}" controls preload="none"></audio>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if note.transcript and note.transcript != note.content %}
+            <div class="note-transcript">
+                <details>
+                    <summary>Transcript</summary>
+                    <p>{{ note.transcript | truncate(500) }}</p>
+                </details>
+            </div>
+            {% endif %}
+        </div>
+
+        <a href="/note/{{ note.id }}" class="note-link">View detail</a>
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+
+{% if total_pages > 1 %}
+<nav class="pagination">
+    {% if page > 1 %}
+    <a href="/?page={{ page - 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn">&laquo; Prev</a>
+    {% endif %}
+    <span class="page-info">Page {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="/?page={{ page + 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn">Next &raquo;</a>
+    {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

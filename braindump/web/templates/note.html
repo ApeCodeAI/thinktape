@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}braindump — note #{{ note.id }}{% endblock %}
+
+{% block content %}
+<div class="note-detail">
+    <a href="/" class="back-link">&larr; Back to timeline</a>
+
+    <div class="note-detail-meta">
+        <span class="note-time">{{ note.created_at }}</span>
+        <span class="note-source">{{ note.source }}</span>
+        {% if note.tags %}
+        <span class="note-tags">
+            {% for tag in note.tags.split(',') %}
+            {% if tag.strip() %}
+            <a href="/?tag={{ tag.strip() }}" class="tag">#{{ tag.strip() }}</a>
+            {% endif %}
+            {% endfor %}
+        </span>
+        {% endif %}
+    </div>
+
+    {% if note.content %}
+    <div class="note-detail-content">{{ note.content | replace('\n', '<br>') | safe }}</div>
+    {% endif %}
+
+    {% if note.attachments %}
+    <div class="note-detail-media">
+        {% for att in note.attachments %}
+        {% if att.media_type == 'image' %}
+        <div class="media-item">
+            <img src="/media/{{ att.file_path[6:] }}" alt="" class="detail-image">
+        </div>
+        {% elif att.media_type == 'video' %}
+        <div class="media-item">
+            <video src="/media/{{ att.file_path[6:] }}" controls class="detail-video"></video>
+        </div>
+        {% elif att.media_type == 'audio' %}
+        <div class="media-item">
+            <audio src="/media/{{ att.file_path[6:] }}" controls></audio>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if note.transcript and note.transcript != note.content %}
+    <div class="note-detail-transcript">
+        <h3>Transcript</h3>
+        <p>{{ note.transcript | replace('\n', '<br>') | safe }}</p>
+    </div>
+    {% endif %}
+
+    <div class="note-actions">
+        {% if note.is_deleted %}
+        <button class="btn btn-restore" onclick="restoreNote({{ note.id }})">Restore</button>
+        {% else %}
+        <button class="btn btn-delete" onclick="deleteNote({{ note.id }})">Delete</button>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,340 @@
+/* braindump — minimal, mobile-friendly styles */
+
+:root {
+    --bg: #fafafa;
+    --card-bg: #fff;
+    --text: #1a1a1a;
+    --text-secondary: #666;
+    --text-muted: #999;
+    --border: #e8e8e8;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --tag-bg: #f0f4ff;
+    --tag-text: #3b5998;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
+/* Header */
+.site-header {
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.site-header .container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    letter-spacing: -0.5px;
+}
+
+.tagline {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* Toolbar */
+.toolbar {
+    padding: 16px 0;
+}
+
+.search-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    border-color: var(--accent);
+}
+
+.filter-select {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    background: var(--card-bg);
+    cursor: pointer;
+}
+
+.btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.btn-search {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-search:hover { background: var(--accent-hover); }
+
+.btn-delete {
+    background: var(--danger);
+    color: #fff;
+}
+
+.btn-restore {
+    background: var(--success);
+    color: #fff;
+}
+
+.stats-bar {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Date groups */
+.date-group {
+    margin-bottom: 24px;
+}
+
+.date-header {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+    position: sticky;
+    top: 50px;
+    background: var(--bg);
+    z-index: 10;
+}
+
+/* Note cards */
+.note-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.2s;
+}
+
+.note-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+.note-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.note-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.note-source {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.note-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.tag {
+    display: inline-block;
+    padding: 1px 8px;
+    background: var(--tag-bg);
+    color: var(--tag-text);
+    border-radius: 4px;
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.tag:hover { opacity: 0.8; }
+
+.note-text {
+    font-size: 14px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.note-media {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.note-thumb {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 6px;
+    object-fit: cover;
+    cursor: pointer;
+}
+
+.note-video {
+    max-width: 100%;
+    border-radius: 6px;
+}
+
+.note-transcript {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.note-link {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.note-link:hover { text-decoration: underline; }
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 0;
+}
+
+.pagination .btn {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--accent);
+}
+
+.pagination .btn:hover { background: var(--tag-bg); }
+
+.page-info {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* Note detail page */
+.note-detail {
+    padding: 16px 0;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 16px;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.back-link:hover { text-decoration: underline; }
+
+.note-detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.note-detail-content {
+    font-size: 15px;
+    line-height: 1.8;
+    word-break: break-word;
+    margin-bottom: 16px;
+}
+
+.note-detail-media {
+    margin-bottom: 16px;
+}
+
+.media-item { margin-bottom: 12px; }
+
+.detail-image {
+    max-width: 100%;
+    border-radius: var(--radius);
+}
+
+.detail-video {
+    max-width: 100%;
+    border-radius: var(--radius);
+}
+
+.note-detail-transcript {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: var(--radius);
+    font-size: 14px;
+}
+
+.note-detail-transcript h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.note-actions {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .container { padding: 0 12px; }
+    .search-form { flex-direction: column; }
+    .search-input { min-width: unset; }
+    .filter-select { width: 100%; }
+    .note-thumb { max-width: 120px; max-height: 120px; }
+}
