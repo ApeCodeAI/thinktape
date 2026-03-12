@@ -19,15 +19,15 @@ COPY README.md ./
 # Install dependencies
 RUN uv sync --frozen --no-dev
 
-# Pre-download whisper model (small, ~500MB) so first run is fast
-RUN uv run python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
-
-# Data volume
+# Data volume (config + db + media + whisper models)
 VOLUME /data
 
 # Expose web port
 EXPOSE 8080
 
-# Default: run all services (Bot + Web + Transcribe)
+# Whisper model cache → /data/models (persistent, not baked into image)
 ENV BRAINDUMP_DATA_DIR=/data
+ENV HF_HOME=/data/models
+
+# Default: run all services (Bot + Web + Transcribe)
 CMD ["uv", "run", "python", "-m", "braindump", "serve"]
