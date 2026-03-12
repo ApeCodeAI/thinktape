@@ -4,61 +4,91 @@
 
 {% block content %}
 <div class="note-detail">
-    <a href="/" class="back-link">&larr; Back to timeline</a>
+    <a href="/" class="back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to timeline
+    </a>
 
-    <div class="note-detail-meta">
-        <span class="note-time">{{ note.created_at }}</span>
-        <span class="note-source">{{ note.source }}</span>
-        {% if note.media_type != 'text' %}
-        <span class="note-type-badge">{{ note.media_type }}</span>
-        {% endif %}
+    <article class="note-detail-body">
+        <div class="note-detail-meta">
+            <span class="note-time">{{ note.created_at[:10] }} {{ note.created_at[11:16] }}</span>
+            {% if note.media_type == 'text' %}
+            <span class="note-type-badge type-text">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Text
+            </span>
+            {% elif note.media_type == 'image' %}
+            <span class="note-type-badge type-image">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Image
+            </span>
+            {% elif note.media_type == 'video' %}
+            <span class="note-type-badge type-video">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                Video
+            </span>
+            {% elif note.media_type == 'audio' %}
+            <span class="note-type-badge type-audio">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                Audio
+            </span>
+            {% endif %}
+            <span class="note-source">{{ note.source }}</span>
+        </div>
+
         {% if note.tags %}
-        <span class="note-tags">
+        <div class="note-detail-tags">
             {% for tag in note.tags.split(',') %}
             {% if tag.strip() %}
             <a href="/?tag={{ tag.strip() }}" class="tag">#{{ tag.strip() }}</a>
             {% endif %}
             {% endfor %}
-        </span>
-        {% endif %}
-    </div>
-
-    {% if note.content %}
-    <div class="note-detail-content markdown-body" data-markdown="{{ note.content | e }}">{{ note.content | replace('\n', '<br>') | safe }}</div>
-    {% endif %}
-
-    {% if note.attachments %}
-    <div class="note-detail-media">
-        {% for att in note.attachments %}
-        {% if att.media_type == 'image' %}
-        <div class="media-item">
-            <img src="/media/{{ att.file_path[6:] }}" alt="" class="detail-image" onclick="openLightbox(this.src)">
-        </div>
-        {% elif att.media_type == 'video' %}
-        <div class="media-item">
-            <video src="/media/{{ att.file_path[6:] }}" controls class="detail-video"></video>
-        </div>
-        {% elif att.media_type == 'audio' %}
-        <div class="media-item">
-            <audio src="/media/{{ att.file_path[6:] }}" controls></audio>
         </div>
         {% endif %}
-        {% endfor %}
-    </div>
-    {% endif %}
 
-    {% if note.transcript and note.transcript != note.content %}
-    <div class="note-detail-transcript">
-        <h3>Transcript</h3>
-        <p>{{ note.transcript | replace('\n', '<br>') | safe }}</p>
-    </div>
-    {% endif %}
+        {% if note.content %}
+        <div class="note-detail-content markdown-body" data-markdown="{{ note.content | e }}">{{ note.content | replace('\n', '<br>') | safe }}</div>
+        {% endif %}
+
+        {% if note.attachments %}
+        <div class="note-detail-media">
+            {% for att in note.attachments %}
+            {% if att.media_type == 'image' %}
+            <div class="media-item">
+                <img src="/media/{{ att.file_path[6:] }}" alt="" class="detail-image" onclick="openLightbox(this.src)">
+            </div>
+            {% elif att.media_type == 'video' %}
+            <div class="media-item">
+                <video src="/media/{{ att.file_path[6:] }}" controls class="detail-video"></video>
+            </div>
+            {% elif att.media_type == 'audio' %}
+            <div class="media-item">
+                <audio src="/media/{{ att.file_path[6:] }}" controls></audio>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if note.transcript and note.transcript != note.content %}
+        <div class="note-detail-transcript">
+            <h3>Transcript</h3>
+            <p>{{ note.transcript | replace('\n', '<br>') | safe }}</p>
+        </div>
+        {% endif %}
+    </article>
 
     <div class="note-actions">
         {% if note.is_deleted %}
-        <button class="btn btn-restore" onclick="restoreNote({{ note.id }})">Restore</button>
+        <button class="btn btn-restore" onclick="restoreNote({{ note.id }})">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Restore
+        </button>
         {% else %}
-        <button class="btn btn-delete" onclick="deleteNote({{ note.id }})">Delete</button>
+        <button class="btn btn-delete" onclick="deleteNote({{ note.id }})">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Move to trash
+        </button>
         {% endif %}
     </div>
 </div>

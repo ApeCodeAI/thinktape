@@ -5,13 +5,16 @@
 {% block content %}
 <div class="toolbar">
     <form class="search-form" method="get" action="/">
-        <input type="text" name="q" value="{{ current_q }}" placeholder="Search notes..." class="search-input">
+        <div class="search-wrapper">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" name="q" value="{{ current_q }}" placeholder="Search notes..." class="search-input">
+        </div>
         <select name="type" class="filter-select">
             <option value="">All types</option>
-            <option value="text" {% if current_type == 'text' %}selected{% endif %}>Text</option>
-            <option value="image" {% if current_type == 'image' %}selected{% endif %}>Image</option>
-            <option value="video" {% if current_type == 'video' %}selected{% endif %}>Video</option>
-            <option value="audio" {% if current_type == 'audio' %}selected{% endif %}>Audio</option>
+            <option value="text" {% if current_type == 'text' %}selected{% endif %}>&#x270D;&#xFE0E; Text</option>
+            <option value="image" {% if current_type == 'image' %}selected{% endif %}>&#x1F5BC;&#xFE0E; Image</option>
+            <option value="video" {% if current_type == 'video' %}selected{% endif %}>&#x1F3AC;&#xFE0E; Video</option>
+            <option value="audio" {% if current_type == 'audio' %}selected{% endif %}>&#x1F3A4;&#xFE0E; Audio</option>
         </select>
         {% if all_tags %}
         <select name="tag" class="filter-select">
@@ -23,67 +26,120 @@
         {% endif %}
         <button type="submit" class="btn btn-search">Search</button>
     </form>
-    <div class="stats-bar">{{ total }} notes</div>
 </div>
+
+{% if current_q or current_type or current_tag %}
+<div class="active-filters">
+    <span class="filter-label">{{ total }} results</span>
+    {% if current_q %}<span class="filter-chip">&#x1F50D; {{ current_q }}<a href="/?{% if current_type %}type={{ current_type }}&{% endif %}{% if current_tag %}tag={{ current_tag }}{% endif %}" class="chip-remove">&times;</a></span>{% endif %}
+    {% if current_type %}<span class="filter-chip type-chip-{{ current_type }}">{{ current_type }}<a href="/?{% if current_q %}q={{ current_q }}&{% endif %}{% if current_tag %}tag={{ current_tag }}{% endif %}" class="chip-remove">&times;</a></span>{% endif %}
+    {% if current_tag %}<span class="filter-chip tag-chip">#{{ current_tag }}<a href="/?{% if current_q %}q={{ current_q }}&{% endif %}{% if current_type %}type={{ current_type }}{% endif %}" class="chip-remove">&times;</a></span>{% endif %}
+    <a href="/" class="filter-clear">Clear all</a>
+</div>
+{% else %}
+<div class="stats-bar">{{ total }} notes</div>
+{% endif %}
 
 {% if not grouped_notes %}
 <div class="empty-state">
-    <div class="empty-state-icon">~</div>
+    <div class="empty-state-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    </div>
     <p>No notes found</p>
+    {% if current_q or current_type or current_tag %}
+    <p class="empty-hint">Try adjusting your filters</p>
+    {% endif %}
 </div>
 {% endif %}
 
 {% for date, notes in grouped_notes.items() %}
 <div class="date-group">
-    <h2 class="date-header">{{ date }}</h2>
+    <h2 class="date-header"><span class="date-label">{{ date }}</span></h2>
     {% for note in notes %}
     <a href="/note/{{ note.id }}" class="note-card-link">
-        <div class="note-card">
+        <div class="note-card{% if note.attachments and note.attachments[0].media_type == 'image' %} has-image{% endif %}">
             <div class="note-meta">
                 <span class="note-time">{{ note.created_at[11:16] }}</span>
-                <span class="note-source">{{ note.source }}</span>
-                {% if note.media_type != 'text' %}
-                <span class="note-type-badge">{{ note.media_type }}</span>
+                {% if note.media_type == 'text' %}
+                <span class="note-type-badge type-text" title="Text">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </span>
+                {% elif note.media_type == 'image' %}
+                <span class="note-type-badge type-image" title="Image">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </span>
+                {% elif note.media_type == 'video' %}
+                <span class="note-type-badge type-video" title="Video">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </span>
+                {% elif note.media_type == 'audio' %}
+                <span class="note-type-badge type-audio" title="Audio">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </span>
                 {% endif %}
+                <span class="note-source">{{ note.source }}</span>
                 {% if note.tags %}
                 <span class="note-tags">
                     {% for tag in note.tags.split(',') %}
                     {% if tag.strip() %}
-                    <span class="tag">#{{ tag.strip() }}</span>
+                    <span class="tag" data-tag="{{ tag.strip() }}">#{{ tag.strip() }}</span>
                     {% endif %}
                     {% endfor %}
                 </span>
                 {% endif %}
             </div>
 
-            <div class="note-content">
-                {% if note.content %}
-                <div class="note-text">{{ note.content | truncate(300) }}</div>
-                {% endif %}
-
+            <div class="note-body">
                 {% if note.attachments %}
-                <div class="note-media">
-                    {% for att in note.attachments %}
-                    {% if att.media_type == 'image' %}
+                {% set images = [] %}
+                {% for att in note.attachments %}
+                {% if att.media_type == 'image' %}{% if images.append(att) %}{% endif %}{% endif %}
+                {% endfor %}
+                {% if images %}
+                <div class="note-thumbs">
+                    {% for att in images[:3] %}
                     <img src="/media/{{ att.file_path[6:] }}" alt="" class="note-thumb" loading="lazy">
-                    {% elif att.media_type == 'video' %}
-                    <video src="/media/{{ att.file_path[6:] }}" controls preload="none" class="note-video"></video>
-                    {% elif att.media_type == 'audio' %}
-                    <audio src="/media/{{ att.file_path[6:] }}" controls preload="none"></audio>
-                    {% endif %}
                     {% endfor %}
+                    {% if images | length > 3 %}
+                    <span class="thumb-more">+{{ images | length - 3 }}</span>
+                    {% endif %}
                 </div>
+                {% endif %}
                 {% endif %}
 
-                {% if note.transcript and note.transcript != note.content %}
-                <div class="note-transcript">
-                    <details>
-                        <summary>Transcript</summary>
-                        <p>{{ note.transcript | truncate(500) }}</p>
-                    </details>
+                <div class="note-content">
+                    {% if note.content %}
+                    <div class="note-text markdown-card" data-markdown="{{ note.content | truncate(500) | e }}">{{ note.content | truncate(300) }}</div>
+                    {% endif %}
+
+                    {% if note.transcript and note.transcript != note.content %}
+                    <div class="note-transcript">
+                        <details>
+                            <summary>Transcript</summary>
+                            <p>{{ note.transcript | truncate(500) }}</p>
+                        </details>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
+
+            {% if note.attachments %}
+            {% set has_av = [] %}
+            {% for att in note.attachments %}
+            {% if att.media_type in ['video', 'audio'] %}{% if has_av.append(att) %}{% endif %}{% endif %}
+            {% endfor %}
+            {% if has_av %}
+            <div class="note-media-inline">
+                {% for att in has_av %}
+                {% if att.media_type == 'video' %}
+                <video src="/media/{{ att.file_path[6:] }}" controls preload="none" class="note-video"></video>
+                {% elif att.media_type == 'audio' %}
+                <audio src="/media/{{ att.file_path[6:] }}" controls preload="none"></audio>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endif %}
         </div>
     </a>
     {% endfor %}
@@ -93,11 +149,11 @@
 {% if total_pages > 1 %}
 <nav class="pagination">
     {% if page > 1 %}
-    <a href="/?page={{ page - 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn">&larr; Prev</a>
+    <a href="/?page={{ page - 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn btn-page">&larr; Prev</a>
     {% endif %}
     <span class="page-info">{{ page }} / {{ total_pages }}</span>
     {% if page < total_pages %}
-    <a href="/?page={{ page + 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn">Next &rarr;</a>
+    <a href="/?page={{ page + 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if current_q %}&q={{ current_q }}{% endif %}" class="btn btn-page">Next &rarr;</a>
     {% endif %}
 </nav>
 {% endif %}
