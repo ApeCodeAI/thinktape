@@ -32,8 +32,8 @@ def _media_dest(cfg, media_type: str, dt: datetime, source_id: str, ext: str) ->
     """Return (absolute_path, relative_path) for a media file."""
     ts = dt.strftime("%Y%m%d_%H%M%S")
     fname = f"{ts}_tg{source_id}.{ext}"
-    year, month, day = dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%d")
-    rel = f"media/{media_type}/{year}/{month}/{day}/{fname}"
+    year, month = dt.strftime("%Y"), dt.strftime("%m")
+    rel = f"media/{media_type}/{year}/{month}/{fname}"
     abs_path = cfg.data_dir / rel
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     return abs_path, rel

@@ -206,13 +206,12 @@ async def import_flomo(export_path: str):
                 ext = src_path.suffix.lstrip(".")
                 year = created_at.strftime("%Y")
                 month = created_at.strftime("%m")
-                day = created_at.strftime("%d")
                 fname = _make_flomo_filename(created_at, note["source_index"] * 10 + img_idx, ext)
 
-                dest_dir = cfg.media_dir / "image" / year / month / day
+                dest_dir = cfg.media_dir / "image" / year / month
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 dest_path = dest_dir / fname
-                rel_path = f"media/image/{year}/{month}/{day}/{fname}"
+                rel_path = f"media/image/{year}/{month}/{fname}"
 
                 shutil.copy2(src_path, dest_path)
 
