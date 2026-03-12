@@ -5,7 +5,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -13,7 +13,8 @@ from starlette.middleware.gzip import GZipMiddleware
 from braindump.config import get_config
 from braindump.database import init_db
 
-STATIC_DIR = Path(__file__).parent / "static"
+# Frontend SPA build output
+FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 
 class TokenAuthMiddleware(BaseHTTPMiddleware):
@@ -24,8 +25,8 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         self.secret_key = secret_key
 
     async def dispatch(self, request: Request, call_next):
-        # Allow static assets without auth
-        if request.url.path.startswith("/static"):
+        # Allow frontend assets without auth
+        if request.url.path.startswith("/assets"):
             return await call_next(request)
 
         # Check token in query param or cookie
@@ -56,16 +57,24 @@ def create_app() -> FastAPI:
     if cfg.web.secret_key:
         app.add_middleware(TokenAuthMiddleware, secret_key=cfg.web.secret_key)
 
-    # Static files
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
     # Media files (serve from data dir)
     if cfg.media_dir.exists():
         app.mount("/media", StaticFiles(directory=cfg.media_dir), name="media")
 
-    # Routes
+    # API routes (must be before SPA fallback)
     from braindump.web.routes import router
     app.include_router(router)
+
+    # Serve frontend SPA
+    if FRONTEND_DIST.exists():
+        # Static assets (JS/CSS/fonts)
+        app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+
+        # SPA fallback: all unmatched routes return index.html
+        @app.get("/{path:path}")
+        async def spa_fallback(path: str):
+            index_html = FRONTEND_DIST / "index.html"
+            return HTMLResponse(index_html.read_text())
 
     return app
 
