@@ -10,14 +10,12 @@ from pathlib import Path
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-from braindump.config import get_config
+from braindump.config import get_config, get_timezone
 from braindump.database import get_db, init_db
-
-TZ_CST = timezone(timedelta(hours=8))
 
 
 def _now() -> datetime:
-    return datetime.now(TZ_CST)
+    return datetime.now(get_timezone())
 
 
 def _display_date(dt: datetime, boundary_hour: int) -> str:
@@ -29,17 +27,22 @@ def _display_date(dt: datetime, boundary_hour: int) -> str:
 
 
 def _media_dest(cfg, media_type: str, dt: datetime, source_id: str, ext: str) -> tuple[Path, str]:
-    """Return (absolute_path, relative_path) for a media file."""
+    """Return (absolute_path, relative_path) for a media file.
+
+    Directory placement uses display_date (respects day_boundary_hour),
+    while the filename timestamp is the real created_at time.
+    """
     ts = dt.strftime("%Y%m%d_%H%M%S")
     fname = f"{ts}_tg{source_id}.{ext}"
-    year, month, day = dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%d")
+    display = _display_date(dt, cfg.general.day_boundary_hour)
+    year, month, day = display.split("-")
     rel = f"media/{media_type}/{year}/{month}/{day}/{fname}"
     abs_path = cfg.data_dir / rel
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     return abs_path, rel
 
 
-def create_bot() -> Client:
+def create_bot(transcribe_worker=None) -> Client:
     """Create and configure the Pyrogram bot client."""
     cfg = get_config()
     bot = Client(
@@ -121,9 +124,9 @@ def create_bot() -> Client:
         elif message.forward_sender_name:
             forward_from = message.forward_sender_name
         if message.forward_date:
-            forward_date = message.forward_date.replace(tzinfo=timezone.utc).astimezone(TZ_CST).isoformat()
+            forward_date = message.forward_date.replace(tzinfo=timezone.utc).astimezone(get_timezone()).isoformat()
 
-        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
+        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
 
         # Write .md file
@@ -154,7 +157,7 @@ def create_bot() -> Client:
         """Handle photo messages."""
         cfg = get_config()
         now = _now()
-        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
+        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
         content = message.caption or ""
         tags = _extract_tags(content)
@@ -191,7 +194,7 @@ def create_bot() -> Client:
         """Handle video messages."""
         cfg = get_config()
         now = _now()
-        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
+        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
         content = message.caption or ""
         tags = _extract_tags(content)
@@ -228,6 +231,8 @@ def create_bot() -> Client:
         finally:
             await db.close()
 
+        if transcribe_worker:
+            await transcribe_worker.enqueue(note_id, rel)
         await message.reply_text("Video saved. Transcription queued.", quote=True)
 
     @bot.on_message(allowed_filter & (filters.voice | filters.audio))
@@ -235,7 +240,7 @@ def create_bot() -> Client:
         """Handle voice/audio messages."""
         cfg = get_config()
         now = _now()
-        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
+        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
         content = message.caption or ""
         tags = _extract_tags(content)
@@ -272,6 +277,8 @@ def create_bot() -> Client:
         finally:
             await db.close()
 
+        if transcribe_worker:
+            await transcribe_worker.enqueue(note_id, rel)
         await message.reply_text("Voice saved. Transcription queued.", quote=True)
 
     @bot.on_message(allowed_filter & filters.document)
@@ -279,7 +286,7 @@ def create_bot() -> Client:
         """Handle document messages (try to detect media type)."""
         cfg = get_config()
         now = _now()
-        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
+        created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
         content = message.caption or ""
         tags = _extract_tags(content)
@@ -332,6 +339,8 @@ def create_bot() -> Client:
         finally:
             await db.close()
 
+        if transcribe_worker and transcribe_status == "pending":
+            await transcribe_worker.enqueue(note_id, rel)
         await message.reply_text(f"File saved ({media_type}).", quote=True)
 
     return bot
@@ -346,12 +355,19 @@ def _extract_tags(text: str) -> list[str]:
 
 
 async def run_bot():
-    """Start the Telegram bot."""
+    """Start the Telegram bot with its transcription worker."""
+    from braindump.transcribe.engine import TranscribeWorker
+
     cfg = get_config()
     cfg.ensure_dirs()
     await init_db()
-    bot = create_bot()
-    print(f"Starting Telegram bot...")
+
+    worker = TranscribeWorker()
+    bot = create_bot(worker)
+
+    worker_task = asyncio.create_task(worker.run())
+
+    print("Starting Telegram bot...")
     await bot.start()
     print("Bot is running. Press Ctrl+C to stop.")
     try:
@@ -359,4 +375,6 @@ async def run_bot():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        worker.stop()
+        worker_task.cancel()
         await bot.stop()

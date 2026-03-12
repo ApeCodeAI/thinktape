@@ -3,7 +3,9 @@
 import os
 import sys
 from dataclasses import dataclass, field
+from datetime import timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -28,8 +30,9 @@ class TelegramConfig:
 
 @dataclass
 class WebConfig:
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8080
+    secret_key: str = ""
 
 
 @dataclass
@@ -143,3 +146,8 @@ def get_config() -> Config:
         _config = load_config()
         _config.ensure_dirs()
     return _config
+
+
+def get_timezone() -> ZoneInfo:
+    """Return the timezone configured in config.toml (general.timezone)."""
+    return ZoneInfo(get_config().general.timezone)

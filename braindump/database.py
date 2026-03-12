@@ -7,9 +7,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from braindump.config import get_config
-
-TZ_CST = timezone(timedelta(hours=8))
+from braindump.config import get_config, get_timezone
 
 MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 
@@ -130,7 +128,7 @@ def _parse_media_filename(name: str) -> dict | None:
         return None
     y, mo, d, h, mi, s, src_prefix, src_id = m.groups()
     try:
-        created_at = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s), tzinfo=TZ_CST)
+        created_at = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s), tzinfo=get_timezone())
     except ValueError:
         return None
     source = _SOURCE_MAP.get(src_prefix, src_prefix)
@@ -154,17 +152,32 @@ async def rebuild_index():
     cfg = get_config()
     cfg.ensure_dirs()
 
-    # Remove existing database and reinitialize
+    # Backup existing database before deleting
+    backup_path = None
     if cfg.db_path.exists():
+        timestamp = datetime.now(get_timezone()).strftime("%Y%m%d_%H%M%S")
+        backup_path = cfg.backup_dir / f"braindump_{timestamp}.db"
+        import shutil
+        shutil.copy2(cfg.db_path, backup_path)
+        print(f"Backed up database to: {backup_path}")
         cfg.db_path.unlink()
         print(f"Removed old database: {cfg.db_path}")
 
-    await init_db()
-    db = await get_db()
+    try:
+        await init_db()
+        db = await get_db()
+    except Exception:
+        # Restore from backup if init fails
+        if backup_path and backup_path.exists():
+            import shutil
+            shutil.copy2(backup_path, cfg.db_path)
+            print(f"Restored database from backup: {backup_path}")
+        raise
 
-    now = datetime.now(TZ_CST).isoformat()
+    now = datetime.now(get_timezone()).isoformat()
     count = 0
     media_types = ["text", "image", "video", "audio"]
+    rebuild_ok = False
 
     try:
         for media_type in media_types:
@@ -232,7 +245,12 @@ async def rebuild_index():
                 count += 1
 
         await db.commit()
+        rebuild_ok = True
         print(f"\nRebuild complete: {count} notes indexed from filesystem.")
 
     finally:
         await db.close()
+        if not rebuild_ok and backup_path and backup_path.exists():
+            import shutil
+            shutil.copy2(backup_path, cfg.db_path)
+            print(f"Rebuild failed — restored database from backup: {backup_path}")

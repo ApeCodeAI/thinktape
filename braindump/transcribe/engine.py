@@ -3,13 +3,11 @@
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 
-from braindump.config import get_config
+from braindump.config import get_config, get_timezone
 from braindump.database import get_db
-
-TZ_CST = timezone(timedelta(hours=8))
 
 
 class TranscribeResult:
@@ -37,19 +35,20 @@ class TranscribeEngine(ABC):
 
 
 class MockEngine(TranscribeEngine):
-    """Mock transcription engine for testing."""
+    """Fallback engine when no real transcription backend is available.
+
+    Raises an error so that notes are marked 'failed' with a clear message
+    instead of silently writing fake transcripts.
+    """
 
     async def transcribe(self, audio_path: str) -> TranscribeResult:
-        return TranscribeResult(
-            text=f"[Mock transcription of {Path(audio_path).name}]",
-            segments=[{"start": 0.0, "end": 1.0, "text": "[Mock transcription]"}],
-            model="mock",
-            language="zh",
-            duration=0,
+        raise RuntimeError(
+            "No transcription engine available. "
+            "Install funasr or whisper, or configure an API provider."
         )
 
     def is_available(self) -> bool:
-        return True
+        return False
 
 
 def get_engine() -> TranscribeEngine:
@@ -110,7 +109,7 @@ def _save_transcript_files(result: TranscribeResult, source_file: str, cfg):
         "model": result.model,
         "language": result.language,
         "duration_seconds": result.duration,
-        "transcribed_at": datetime.now(TZ_CST).isoformat(),
+        "transcribed_at": datetime.now(get_timezone()).isoformat(),
         "segments": result.segments,
     }
     json_path.write_text(json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -149,6 +148,15 @@ class TranscribeWorker:
 
         if not abs_path.exists():
             print(f"  Transcribe error: file not found: {abs_path}")
+            db = await get_db()
+            try:
+                await db.execute(
+                    "UPDATE notes SET transcribe_status = 'failed' WHERE id = ?",
+                    (note_id,),
+                )
+                await db.commit()
+            finally:
+                await db.close()
             return
 
         # Update status

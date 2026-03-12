@@ -10,15 +10,13 @@ Parses the exported HTML file from Flomo, extracts notes with:
 import hashlib
 import re
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from braindump.config import get_config
+from braindump.config import get_config, get_timezone
 from braindump.database import get_db, init_db
-
-TZ_CST = timezone(timedelta(hours=8))
 
 # Match hashtags in text: #tag or #parent/child, but not URLs or CSS colors
 TAG_PATTERN = re.compile(r"(?:^|\s)#([a-zA-Z\u4e00-\u9fff][\w/\u4e00-\u9fff]*)")
@@ -75,7 +73,7 @@ def parse_flomo_html(html_path: Path) -> list[dict]:
             continue
         time_str = time_div.get_text(strip=True)
         try:
-            created_at = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ_CST)
+            created_at = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=get_timezone())
         except ValueError:
             print(f"  Warning: cannot parse time '{time_str}', skipping memo #{idx}")
             continue
@@ -151,7 +149,7 @@ async def import_flomo(export_path: str):
     await init_db()
     db = await get_db()
 
-    now = datetime.now(TZ_CST).isoformat()
+    now = datetime.now(get_timezone()).isoformat()
     imported = 0
     skipped = 0
     images_copied = 0
@@ -181,9 +179,7 @@ async def import_flomo(export_path: str):
             # Write .md file for text content
             text_file_path = None
             if note["content"]:
-                year = created_at.strftime("%Y")
-                month = created_at.strftime("%m")
-                day = created_at.strftime("%d")
+                year, month, day = display_date.split("-")
                 ts = created_at.strftime("%Y%m%d_%H%M%S")
                 md_fname = f"{ts}_fl{content_hash}.md"
                 md_dir = cfg.media_dir / "text" / year / month / day
@@ -214,15 +210,21 @@ async def import_flomo(export_path: str):
 
             # Copy images
             for img_idx, img_src in enumerate(note["images"]):
-                src_path = export_dir / img_src
+                # Sanitize img_src: reject absolute paths and .. segments
+                if img_src.startswith("/") or ".." in img_src.split("/"):
+                    print(f"  Warning: rejecting unsafe image path: {img_src}")
+                    continue
+                src_path = (export_dir / img_src).resolve()
+                if not src_path.is_relative_to(export_dir.resolve()):
+                    print(f"  Warning: image path escapes export dir: {img_src}")
+                    continue
                 if not src_path.exists():
                     print(f"  Warning: image not found: {src_path}")
                     continue
 
                 ext = src_path.suffix.lstrip(".")
-                year = created_at.strftime("%Y")
-                month = created_at.strftime("%m")
-                day = created_at.strftime("%d")
+                display_d = _compute_display_date(created_at, cfg.general.day_boundary_hour)
+                year, month, day = display_d.split("-")
                 fname = _make_flomo_filename(created_at, note["source_index"] * 10 + img_idx, ext)
 
                 dest_dir = cfg.media_dir / "image" / year / month / day
