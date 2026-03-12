@@ -36,16 +36,6 @@
             <span class="note-source">{{ note.source }}</span>
         </div>
 
-        {% if note.tags %}
-        <div class="note-detail-tags">
-            {% for tag in note.tags.split(',') %}
-            {% if tag.strip() %}
-            <a href="/?tag={{ tag.strip() }}" class="tag">#{{ tag.strip() }}</a>
-            {% endif %}
-            {% endfor %}
-        </div>
-        {% endif %}
-
         {% if note.content %}
         <div class="note-detail-content markdown-body" data-markdown="{{ note.content | e }}">{{ note.content | replace('\n', '<br>') | safe }}</div>
         {% endif %}
@@ -74,6 +64,16 @@
         <div class="note-detail-transcript">
             <h3>Transcript</h3>
             <p>{{ note.transcript | replace('\n', '<br>') | safe }}</p>
+        </div>
+        {% endif %}
+
+        {% if note.tags %}
+        <div class="note-detail-tags">
+            {% for tag in note.tags.split(',') %}
+            {% if tag.strip() %}
+            <a href="/?tag={{ tag.strip() }}" class="tag">#{{ tag.strip() }}</a>
+            {% endif %}
+            {% endfor %}
         </div>
         {% endif %}
     </article>
