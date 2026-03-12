@@ -84,6 +84,7 @@ class Config:
             self.media_dir / "video",
             self.media_dir / "audio",
             self.media_dir / "image",
+            self.media_dir / "text",
             self.transcripts_dir,
             self.trash_dir,
             self.import_dir,

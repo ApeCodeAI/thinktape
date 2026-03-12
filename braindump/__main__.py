@@ -32,6 +32,9 @@ def main():
     # upgrade
     sub.add_parser("upgrade", help="Run database migrations")
 
+    # rebuild-index
+    sub.add_parser("rebuild-index", help="Rebuild database from filesystem")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -64,6 +67,10 @@ def main():
     elif args.command == "stats":
         from braindump.database import show_stats
         asyncio.run(show_stats())
+
+    elif args.command == "rebuild-index":
+        from braindump.database import rebuild_index
+        asyncio.run(rebuild_index())
 
 
 if __name__ == "__main__":

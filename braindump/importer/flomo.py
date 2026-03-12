@@ -178,15 +178,31 @@ async def import_flomo(export_path: str):
             has_images = len(note["images"]) > 0
             media_type = "image" if has_images and not note["content"] else "text"
 
+            # Write .md file for text content
+            text_file_path = None
+            if note["content"]:
+                year = created_at.strftime("%Y")
+                month = created_at.strftime("%m")
+                day = created_at.strftime("%d")
+                ts = created_at.strftime("%Y%m%d_%H%M%S")
+                md_fname = f"{ts}_fl{content_hash}.md"
+                md_dir = cfg.media_dir / "text" / year / month / day
+                md_dir.mkdir(parents=True, exist_ok=True)
+                md_dest = md_dir / md_fname
+                md_dest.write_text(note["content"], encoding="utf-8")
+                text_file_path = f"media/text/{year}/{month}/{day}/{md_fname}"
+
             # Insert note
+            file_path_value = text_file_path  # will be overridden if has images
             cursor = await db.execute(
                 """INSERT INTO notes
-                   (content, media_type, created_at, display_date, imported_at,
+                   (content, media_type, file_path, created_at, display_date, imported_at,
                     source, source_id, tags, transcribe_status)
-                   VALUES (?, ?, ?, ?, ?, 'flomo', ?, ?, 'not_needed')""",
+                   VALUES (?, ?, ?, ?, ?, ?, 'flomo', ?, ?, 'not_needed')""",
                 (
                     note["content"],
                     media_type,
+                    file_path_value,
                     created_at.isoformat(),
                     display_date,
                     now,

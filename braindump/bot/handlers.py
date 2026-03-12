@@ -126,15 +126,20 @@ def create_bot() -> Client:
         created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(TZ_CST)
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
 
+        # Write .md file
+        dest, rel = _media_dest(cfg, "text", created_at, str(message.id), "md")
+        dest.write_text(content, encoding="utf-8")
+        file_size = dest.stat().st_size
+
         db = await get_db()
         try:
             await db.execute(
                 """INSERT INTO notes
-                   (content, media_type, created_at, display_date, imported_at,
+                   (content, media_type, file_path, file_size, created_at, display_date, imported_at,
                     source, source_id, tags, is_forwarded, forward_from, forward_date,
                     transcribe_status)
-                   VALUES (?, 'text', ?, ?, ?, 'telegram', ?, ?, ?, ?, ?, 'not_needed')""",
-                (content, created_at.isoformat(), display_date, now.isoformat(),
+                   VALUES (?, 'text', ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, ?, ?, 'not_needed')""",
+                (content, rel, file_size, created_at.isoformat(), display_date, now.isoformat(),
                  str(message.id), ",".join(tags),
                  is_forwarded, forward_from, forward_date),
             )

@@ -1,12 +1,15 @@
 """Database operations and migrations."""
 
+import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import aiosqlite
 
 from braindump.config import get_config
+
+TZ_CST = timezone(timedelta(hours=8))
 
 MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 
@@ -106,5 +109,130 @@ async def show_stats():
         print("\nBy source:")
         for row in by_source:
             print(f"  {row[0]}: {row[1]}")
+    finally:
+        await db.close()
+
+
+# Filename pattern: YYYYMMDD_HHmmss_{source}{id}.{ext}
+# Source prefixes are always 2 chars: tg, fl, mm, im
+_FILENAME_RE = re.compile(
+    r"^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(tg|fl|mm|im)(.+)\..+$"
+)
+
+# Source prefix mapping
+_SOURCE_MAP = {"tg": "telegram", "fl": "flomo", "mm": "memos", "im": "manual"}
+
+
+def _parse_media_filename(name: str) -> dict | None:
+    """Parse a media filename into components. Returns None if not parseable."""
+    m = _FILENAME_RE.match(name)
+    if not m:
+        return None
+    y, mo, d, h, mi, s, src_prefix, src_id = m.groups()
+    try:
+        created_at = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s), tzinfo=TZ_CST)
+    except ValueError:
+        return None
+    source = _SOURCE_MAP.get(src_prefix, src_prefix)
+    return {
+        "created_at": created_at,
+        "source": source,
+        "source_id": f"{src_prefix}{src_id.split('.')[0]}" if '.' in name else f"{src_prefix}{src_id}",
+    }
+
+
+def _compute_display_date(created_at: datetime, day_boundary_hour: int) -> str:
+    if created_at.hour < day_boundary_hour:
+        d = created_at.date() - timedelta(days=1)
+    else:
+        d = created_at.date()
+    return d.isoformat()
+
+
+async def rebuild_index():
+    """Rebuild database from filesystem. Scans media/ and transcripts/ directories."""
+    cfg = get_config()
+    cfg.ensure_dirs()
+
+    # Remove existing database and reinitialize
+    if cfg.db_path.exists():
+        cfg.db_path.unlink()
+        print(f"Removed old database: {cfg.db_path}")
+
+    await init_db()
+    db = await get_db()
+
+    now = datetime.now(TZ_CST).isoformat()
+    count = 0
+    media_types = ["text", "image", "video", "audio"]
+
+    try:
+        for media_type in media_types:
+            type_dir = cfg.media_dir / media_type
+            if not type_dir.exists():
+                continue
+
+            for filepath in sorted(type_dir.rglob("*")):
+                if not filepath.is_file():
+                    continue
+
+                parsed = _parse_media_filename(filepath.name)
+                if not parsed:
+                    print(f"  Warning: cannot parse filename: {filepath.name}")
+                    continue
+
+                created_at = parsed["created_at"]
+                source = parsed["source"]
+                source_id = parsed["source_id"]
+                display_date = _compute_display_date(created_at, cfg.general.day_boundary_hour)
+
+                # Compute relative path
+                rel_path = str(filepath.relative_to(cfg.data_dir))
+
+                # Read content for text notes
+                content = None
+                if media_type == "text":
+                    content = filepath.read_text(encoding="utf-8")
+
+                # Check for transcript
+                transcript = None
+                transcript_base = filepath.stem
+                transcript_dir = cfg.transcripts_dir / created_at.strftime("%Y") / created_at.strftime("%m") / created_at.strftime("%d")
+                txt_transcript = transcript_dir / f"{transcript_base}.txt"
+                if txt_transcript.exists():
+                    transcript = txt_transcript.read_text(encoding="utf-8")
+
+                file_size = filepath.stat().st_size
+
+                # Determine transcribe status
+                if media_type in ("video", "audio"):
+                    transcribe_status = "done" if transcript else "pending"
+                else:
+                    transcribe_status = "not_needed"
+
+                cursor = await db.execute(
+                    """INSERT INTO notes
+                       (content, media_type, file_path, file_size,
+                        created_at, display_date, imported_at,
+                        source, source_id, transcript, transcribe_status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (content, media_type, rel_path, file_size,
+                     created_at.isoformat(), display_date, now,
+                     source, source_id, transcript, transcribe_status),
+                )
+                note_id = cursor.lastrowid
+
+                # Create attachment for non-text types
+                if media_type != "text":
+                    await db.execute(
+                        "INSERT INTO attachments (note_id, file_path, media_type, file_size) VALUES (?, ?, ?, ?)",
+                        (note_id, rel_path, media_type, file_size),
+                    )
+
+                count += 1
+
+        await db.commit()
+        print(f"\nRebuild complete: {count} notes indexed from filesystem.")
+
     finally:
         await db.close()
