@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
+@import "highlight.js/styles/github.css" layer(base);
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
