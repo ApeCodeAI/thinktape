@@ -21,13 +21,16 @@
   - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) 引擎，CPU/GPU 均可
   - 模型可选：`tiny` / `base` / `small` / `medium` / `large-v3`
   - 异步队列处理，不阻塞 Bot 响应
-- **Web UI** — 时间线浏览你的所有表达
-  - 按日期分组的时间线
+- **Web UI** — React SPA 浏览你的所有表达
+  - 按日期分组的时间线（无限滚动）
   - 全文搜索（SQLite FTS5）
-  - 按类型筛选（文字/图片/视频/语音）
-  - 标签筛选
-  - Markdown 渲染，链接可点击
-  - 响应式设计，手机友好
+  - 按类型/标签筛选
+  - Markdown 渲染 + 代码高亮 + KaTeX 数学公式
+  - 统计仪表盘（月趋势、类型分布、标签排行）
+  - 日历热力图视图
+  - 暗色模式（跟随系统 / 手动切换）
+  - 响应式设计，手机友好（底部导航栏）
+  - 笔记创建、编辑、删除
   - 可选 token 认证保护
 - **Flomo 导入** — 从 Flomo 导出的 HTML 批量导入
   - 保留原始时间、标签、图片
@@ -100,6 +103,19 @@ Docker 镜像特点：
 
 迁移已有数据：`cp -r ~/braindump-data/* ./data/`
 
+## Development
+
+```bash
+# Backend
+uv run python -m braindump web      # http://localhost:8080
+
+# Frontend (separate terminal)
+cd frontend && npm install && npm run dev   # http://localhost:5173 (proxies API to :8080)
+
+# E2E tests (requires both servers running)
+uv run python -m pytest tests/test_frontend_e2e.py -x -v
+```
+
 ## Configuration
 
 ```toml
@@ -145,9 +161,10 @@ port = 8080
 |------|------|
 | 语言 | Python 3.11+ / uv |
 | Telegram | Pyrofork (MTProto, ≤2GB 文件) |
-| Web | FastAPI + Jinja2 |
+| Frontend | React 19 + TypeScript + Vite + Tailwind CSS v4 + shadcn/ui |
+| Backend | FastAPI + aiosqlite |
 | 转写 | faster-whisper (CPU/GPU) |
-| 数据库 | SQLite + aiosqlite + FTS5 |
+| 数据库 | SQLite + FTS5 |
 | 部署 | Docker / docker-compose |
 
 ## License
