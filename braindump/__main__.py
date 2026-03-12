@@ -8,9 +8,10 @@ import sys
 async def _serve_all():
     """Start Web + Bot + Transcribe Worker concurrently."""
     import uvicorn
+    from telegram import Update
     from braindump.config import get_config
     from braindump.database import init_db
-    from braindump.bot.handlers import create_bot
+    from braindump.bot.handlers import create_app as create_bot_app
     from braindump.transcribe.engine import TranscribeWorker
     from braindump.web.app import create_app
 
@@ -19,7 +20,7 @@ async def _serve_all():
     await init_db()
 
     worker = TranscribeWorker()
-    bot = create_bot(worker)
+    bot_app = create_bot_app(worker)
     app = create_app()
 
     config = uvicorn.Config(
@@ -31,12 +32,16 @@ async def _serve_all():
     server = uvicorn.Server(config)
 
     async def run_bot_task():
-        await bot.start()
+        await bot_app.initialize()
+        await bot_app.start()
+        await bot_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         print("Bot is running.")
         try:
             await asyncio.Event().wait()
         finally:
-            await bot.stop()
+            await bot_app.updater.stop()
+            await bot_app.stop()
+            await bot_app.shutdown()
 
     tasks = [
         asyncio.create_task(server.serve()),

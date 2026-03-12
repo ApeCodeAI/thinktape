@@ -22,8 +22,6 @@ class GeneralConfig:
 
 @dataclass
 class TelegramConfig:
-    api_id: int = 0
-    api_hash: str = ""
     bot_token: str = ""
     allowed_users: list[int] = field(default_factory=list)
 
