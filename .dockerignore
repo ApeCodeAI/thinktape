@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+test-data/
+tests/
+data/
+*.db
+.env
+.env.local
+*.session
+*.session-journal
+.git/
+.pytest_cache/
+braindump-data/
+REVIEW.md
+DESIGN.md

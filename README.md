@@ -79,6 +79,39 @@ port = 8080
 - **faster-whisper** — Speech-to-text (CPU/GPU)
 - **SQLite** + aiosqlite — Metadata index
 
+## Docker Deployment
+
+```bash
+git clone https://github.com/ApeCodeAI/braindump.git
+cd braindump
+
+# Create data directory and config
+mkdir -p data
+cp config.example.toml data/config.toml
+# Edit data/config.toml with your Telegram credentials
+
+# Build and run
+docker compose up -d
+
+# Import Flomo data (optional)
+docker compose exec braindump uv run python -m braindump import flomo /data/flomo-export/
+
+# View logs
+docker compose logs -f
+```
+
+The Docker image:
+- Pre-downloads whisper `small` model (~500MB) at build time
+- Includes `ffmpeg` for audio/video processing
+- Mounts `/data` volume for persistent storage
+- Runs all services (Bot + Web + Transcribe) by default
+
+### Migrate existing data
+
+```bash
+cp -r ~/braindump-data/* ./data/
+```
+
 ## License
 
 MIT

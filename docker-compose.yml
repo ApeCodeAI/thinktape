@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  braindump:
+    build: .
+    container_name: braindump
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - BRAINDUMP_DATA_DIR=/data
+    # Uncomment to run specific services:
+    # command: uv run python -m braindump web    # Web only
+    # command: uv run python -m braindump bot    # Bot only
