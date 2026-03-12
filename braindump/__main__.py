@@ -5,6 +5,55 @@ import asyncio
 import sys
 
 
+async def _serve_all():
+    """Start Web + Bot + Transcribe Worker concurrently."""
+    import uvicorn
+    from braindump.config import get_config
+    from braindump.database import init_db
+    from braindump.bot.handlers import create_bot
+    from braindump.transcribe.engine import TranscribeWorker
+    from braindump.web.app import create_app
+
+    cfg = get_config()
+    cfg.ensure_dirs()
+    await init_db()
+
+    worker = TranscribeWorker()
+    bot = create_bot(worker)
+    app = create_app()
+
+    config = uvicorn.Config(
+        app,
+        host=cfg.web.host,
+        port=cfg.web.port,
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+
+    async def run_bot_task():
+        await bot.start()
+        print("Bot is running.")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await bot.stop()
+
+    tasks = [
+        asyncio.create_task(server.serve()),
+        asyncio.create_task(run_bot_task()),
+        asyncio.create_task(worker.run()),
+    ]
+
+    try:
+        await asyncio.gather(*tasks)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        worker.stop()
+        for t in tasks:
+            t.cancel()
+
+
 def main():
     parser = argparse.ArgumentParser(prog="braindump", description="Personal expression material library")
     sub = parser.add_subparsers(dest="command")
@@ -57,8 +106,7 @@ def main():
         asyncio.run(run_bot())
 
     elif args.command == "serve":
-        from braindump.web.app import run_web
-        run_web()
+        asyncio.run(_serve_all())
 
     elif args.command == "upgrade":
         from braindump.database import run_migrations
