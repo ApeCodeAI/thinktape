@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-bot = ["python-telegram-bot>=20"]
+bot = ["pyrogram>=2.0", "tgcrypto>=1.2"]
 transcribe = ["funasr>=1.0"]
 
 [build-system]
