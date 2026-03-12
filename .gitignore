@@ -8,3 +8,8 @@ braindump-data/
 test-data/
 *.db
 .env
+.env.local
+*.session
+*.session-journal
+/tmp/
+.pytest_cache/

@@ -1,0 +1,20 @@
+[general]
+data_dir = "~/braindump-data"
+timezone = "Asia/Shanghai"
+day_boundary_hour = 4              # Content before this hour belongs to previous day
+
+[telegram]
+api_id = 12345                     # Get from https://my.telegram.org
+api_hash = "your_api_hash_here"
+bot_token = "your_bot_token_here"  # Get from @BotFather
+allowed_users = [123456789]        # Your Telegram user ID
+
+[transcribe]
+engine = "whisper"                 # whisper | funasr
+whisper_model = "small"            # tiny | base | small | medium | large-v3
+whisper_device = "cpu"             # cpu | cuda
+
+[web]
+host = "127.0.0.1"
+port = 8080
+# secret_key = "your_secret"      # Optional: enable token-based auth
