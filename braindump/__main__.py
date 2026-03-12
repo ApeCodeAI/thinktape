@@ -23,6 +23,9 @@ def main():
     flomo_p = import_sub.add_parser("flomo", help="Import from Flomo HTML export")
     flomo_p.add_argument("path", help="Path to Flomo export directory")
 
+    # bot
+    sub.add_parser("bot", help="Start Telegram Bot only")
+
     # stats
     sub.add_parser("stats", help="Show statistics")
 
@@ -45,6 +48,10 @@ def main():
             asyncio.run(import_flomo(args.path))
         else:
             import_p.print_help()
+
+    elif args.command == "bot":
+        from braindump.bot.handlers import run_bot
+        asyncio.run(run_bot())
 
     elif args.command == "serve":
         from braindump.web.app import run_web
