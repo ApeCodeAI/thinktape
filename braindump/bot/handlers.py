@@ -1,9 +1,8 @@
 """Telegram Bot message handlers using Pyrogram."""
 
 import asyncio
-import hashlib
-import os
-import shutil
+import functools
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,6 +11,15 @@ from pyrogram.types import Message
 
 from braindump.config import get_config, get_timezone
 from braindump.database import get_db, init_db
+
+logger = logging.getLogger("braindump.bot")
+
+# Module-level bot status for health checks
+_bot_connected = False
+
+
+def is_bot_connected() -> bool:
+    return _bot_connected
 
 
 def _now() -> datetime:
@@ -42,8 +50,24 @@ def _media_dest(cfg, media_type: str, dt: datetime, source_id: str, ext: str) ->
     return abs_path, rel
 
 
+def safe_handler(func):
+    """Decorator that wraps bot handlers with error handling."""
+    @functools.wraps(func)
+    async def wrapper(client, message):
+        try:
+            await func(client, message)
+        except Exception as e:
+            logger.error("Handler %s failed: %s", func.__name__, e, exc_info=True)
+            try:
+                await message.reply_text(f"❌ 保存失败: {e}")
+            except Exception:
+                pass  # reply also failed, already logged
+    return wrapper
+
+
 def create_bot(transcribe_worker=None) -> Client:
     """Create and configure the Pyrogram bot client."""
+    global _bot_connected
     cfg = get_config()
     bot = Client(
         name="braindump_bot",
@@ -63,6 +87,7 @@ def create_bot(transcribe_worker=None) -> Client:
     allowed_filter = filters.create(is_allowed)
 
     @bot.on_message(allowed_filter & filters.command("start"))
+    @safe_handler
     async def on_start(client: Client, message: Message):
         await message.reply_text(
             "**braindump** — dump your brain.\n\n"
@@ -71,6 +96,7 @@ def create_bot(transcribe_worker=None) -> Client:
         )
 
     @bot.on_message(allowed_filter & filters.command("stats"))
+    @safe_handler
     async def on_stats(client: Client, message: Message):
         db = await get_db()
         try:
@@ -88,6 +114,7 @@ def create_bot(transcribe_worker=None) -> Client:
             await db.close()
 
     @bot.on_message(allowed_filter & filters.command("recent"))
+    @safe_handler
     async def on_recent(client: Client, message: Message):
         db = await get_db()
         try:
@@ -108,6 +135,7 @@ def create_bot(transcribe_worker=None) -> Client:
             await db.close()
 
     @bot.on_message(allowed_filter & filters.text & ~filters.command(["start", "stats", "recent", "status"]))
+    @safe_handler
     async def on_text(client: Client, message: Message):
         """Handle plain text messages."""
         cfg = get_config()
@@ -153,6 +181,7 @@ def create_bot(transcribe_worker=None) -> Client:
         await message.reply_text("Saved.", quote=True)
 
     @bot.on_message(allowed_filter & filters.photo)
+    @safe_handler
     async def on_photo(client: Client, message: Message):
         """Handle photo messages."""
         cfg = get_config()
@@ -190,6 +219,7 @@ def create_bot(transcribe_worker=None) -> Client:
         await message.reply_text("Image saved.", quote=True)
 
     @bot.on_message(allowed_filter & (filters.video | filters.video_note))
+    @safe_handler
     async def on_video(client: Client, message: Message):
         """Handle video messages."""
         cfg = get_config()
@@ -236,6 +266,7 @@ def create_bot(transcribe_worker=None) -> Client:
         await message.reply_text("Video saved. Transcription queued.", quote=True)
 
     @bot.on_message(allowed_filter & (filters.voice | filters.audio))
+    @safe_handler
     async def on_voice(client: Client, message: Message):
         """Handle voice/audio messages."""
         cfg = get_config()
@@ -282,6 +313,7 @@ def create_bot(transcribe_worker=None) -> Client:
         await message.reply_text("Voice saved. Transcription queued.", quote=True)
 
     @bot.on_message(allowed_filter & filters.document)
+    @safe_handler
     async def on_document(client: Client, message: Message):
         """Handle document messages (try to detect media type)."""
         cfg = get_config()
@@ -367,9 +399,9 @@ async def run_bot():
 
     worker_task = asyncio.create_task(worker.run())
 
-    print("Starting Telegram bot...")
+    logger.info("Starting Telegram bot...")
     await bot.start()
-    print("Bot is running. Press Ctrl+C to stop.")
+    logger.info("Bot is running. Press Ctrl+C to stop.")
     try:
         await asyncio.Event().wait()  # Run forever
     except (KeyboardInterrupt, SystemExit):

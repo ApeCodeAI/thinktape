@@ -1,5 +1,6 @@
 """Database operations and migrations."""
 
+import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,8 @@ from pathlib import Path
 import aiosqlite
 
 from braindump.config import get_config, get_timezone
+
+logger = logging.getLogger("braindump.database")
 
 MIGRATIONS_DIR = Path(__file__).parent.parent / "migrations"
 
@@ -71,15 +74,15 @@ async def _run_migrations(db: aiosqlite.Connection):
                 (migration_id, mf.name, datetime.now(timezone.utc).isoformat()),
             )
             await db.commit()
-            print(f"  Applied migration: {mf.name}")
+            logger.info("Applied migration: %s", mf.name)
 
 
 async def run_migrations():
     """CLI entry point for migrations."""
     cfg = get_config()
-    print(f"Database: {cfg.db_path}")
+    logger.info("Database: %s", cfg.db_path)
     await init_db()
-    print("Migrations complete.")
+    logger.info("Migrations complete.")
 
 
 async def show_stats():
@@ -100,13 +103,13 @@ async def show_stats():
         )
         by_source = await cursor.fetchall()
 
-        print(f"\nTotal notes: {total}")
-        print("\nBy type:")
+        logger.info("Total notes: %d", total)
+        logger.info("By type:")
         for row in by_type:
-            print(f"  {row[0]}: {row[1]}")
-        print("\nBy source:")
+            logger.info("  %s: %d", row[0], row[1])
+        logger.info("By source:")
         for row in by_source:
-            print(f"  {row[0]}: {row[1]}")
+            logger.info("  %s: %d", row[0], row[1])
     finally:
         await db.close()
 
@@ -159,9 +162,9 @@ async def rebuild_index():
         backup_path = cfg.backup_dir / f"braindump_{timestamp}.db"
         import shutil
         shutil.copy2(cfg.db_path, backup_path)
-        print(f"Backed up database to: {backup_path}")
+        logger.info("Backed up database to: %s", backup_path)
         cfg.db_path.unlink()
-        print(f"Removed old database: {cfg.db_path}")
+        logger.info("Removed old database: %s", cfg.db_path)
 
     try:
         await init_db()
@@ -171,7 +174,7 @@ async def rebuild_index():
         if backup_path and backup_path.exists():
             import shutil
             shutil.copy2(backup_path, cfg.db_path)
-            print(f"Restored database from backup: {backup_path}")
+            logger.error("Restored database from backup: %s", backup_path)
         raise
 
     now = datetime.now(get_timezone()).isoformat()
@@ -191,7 +194,7 @@ async def rebuild_index():
 
                 parsed = _parse_media_filename(filepath.name)
                 if not parsed:
-                    print(f"  Warning: cannot parse filename: {filepath.name}")
+                    logger.warning("Cannot parse filename: %s", filepath.name)
                     continue
 
                 created_at = parsed["created_at"]
@@ -246,11 +249,11 @@ async def rebuild_index():
 
         await db.commit()
         rebuild_ok = True
-        print(f"\nRebuild complete: {count} notes indexed from filesystem.")
+        logger.info("Rebuild complete: %d notes indexed from filesystem.", count)
 
     finally:
         await db.close()
         if not rebuild_ok and backup_path and backup_path.exists():
             import shutil
             shutil.copy2(backup_path, cfg.db_path)
-            print(f"Rebuild failed — restored database from backup: {backup_path}")
+            logger.error("Rebuild failed — restored database from backup: %s", backup_path)

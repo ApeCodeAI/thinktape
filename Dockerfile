@@ -41,5 +41,9 @@ EXPOSE 8080
 ENV BRAINDUMP_DATA_DIR=/data
 ENV HF_HOME=/data/models
 
+# Health check using Python (slim image has no curl)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+
 # Default: run all services (Bot + Web + Transcribe)
 CMD ["uv", "run", "python", "-m", "braindump", "serve"]

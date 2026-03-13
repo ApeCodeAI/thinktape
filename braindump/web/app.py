@@ -25,8 +25,8 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         self.secret_key = secret_key
 
     async def dispatch(self, request: Request, call_next):
-        # Allow frontend assets without auth
-        if request.url.path.startswith("/assets"):
+        # Allow frontend assets and health check without auth
+        if request.url.path.startswith("/assets") or request.url.path == "/health":
             return await call_next(request)
 
         # Check token in query param or cookie
@@ -56,6 +56,26 @@ def create_app() -> FastAPI:
     # Token auth middleware (only if secret_key is configured)
     if cfg.web.secret_key:
         app.add_middleware(TokenAuthMiddleware, secret_key=cfg.web.secret_key)
+
+    # Health check endpoint (before media mount, bypasses auth)
+    @app.get("/health")
+    async def health_check():
+        from braindump import __version__
+        from braindump.bot.handlers import is_bot_connected
+        from braindump.__main__ import get_transcribe_worker
+
+        worker = get_transcribe_worker()
+        transcribe_info = {
+            "engine": cfg.transcribe.engine,
+            "queue": worker.queue_size() if worker else 0,
+        }
+
+        return {
+            "status": "ok",
+            "version": __version__,
+            "bot": "connected" if is_bot_connected() else "disconnected",
+            "transcribe": transcribe_info,
+        }
 
     # Media files (serve from data dir)
     if cfg.media_dir.exists():
