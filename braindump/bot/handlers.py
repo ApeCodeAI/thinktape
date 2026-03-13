@@ -3,6 +3,8 @@
 import asyncio
 import functools
 import logging
+import shutil
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -13,6 +15,9 @@ from braindump.config import get_config, get_timezone
 from braindump.database import get_db, init_db
 
 logger = logging.getLogger("braindump.bot")
+
+# Download timeout in seconds (30 minutes)
+DOWNLOAD_TIMEOUT = 1800
 
 # Module-level bot status for health checks
 _bot_connected = False
@@ -48,6 +53,88 @@ def _media_dest(cfg, media_type: str, dt: datetime, source_id: str, ext: str) ->
     abs_path = cfg.data_dir / rel
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     return abs_path, rel
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format byte size to human readable string."""
+    if size_bytes >= 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024**3):.1f}GB"
+    if size_bytes >= 1024 * 1024:
+        return f"{size_bytes / (1024**2):.0f}MB"
+    if size_bytes >= 1024:
+        return f"{size_bytes / 1024:.0f}KB"
+    return f"{size_bytes}B"
+
+
+def _check_disk_space(cfg, file_size: int | None) -> str | None:
+    """Check if there's enough disk space for download.
+
+    Returns an error message if space is insufficient, None if OK.
+    If file_size is None (unknown), the check is skipped.
+    """
+    if file_size is None or file_size <= 0:
+        return None
+    try:
+        usage = shutil.disk_usage(cfg.data_dir)
+        required = int(file_size * 1.5)
+        if usage.free < required:
+            return (
+                f"⚠️ 磁盘空间不足\n"
+                f"需要: {_format_size(required)}\n"
+                f"剩余: {_format_size(usage.free)}"
+            )
+    except OSError as e:
+        logger.warning("Failed to check disk space: %s", e)
+    return None
+
+
+def _make_progress_callback(message: Message):
+    """Create a progress callback for download_media.
+
+    Updates the status message every 20% progress, with at least 3 seconds
+    between updates to avoid Telegram API rate limiting.
+    """
+    state = {"last_update_time": 0.0, "last_percent": 0, "status_msg": None}
+
+    async def progress(current: int, total: int):
+        if total <= 0:
+            return
+        percent = int(current * 100 / total)
+        # Only update at 20% intervals
+        step = (percent // 20) * 20
+        if step <= state["last_percent"] or step == 0:
+            return
+        # Rate limit: at least 3 seconds between updates
+        now = time.monotonic()
+        if now - state["last_update_time"] < 3.0:
+            return
+
+        state["last_percent"] = step
+        state["last_update_time"] = now
+        text = f"⬇️ 下载中... {step}% ({_format_size(current)}/{_format_size(total)})"
+        try:
+            if state["status_msg"] is None:
+                state["status_msg"] = await message.reply_text(text, quote=True)
+            else:
+                await state["status_msg"].edit_text(text)
+        except Exception as e:
+            logger.debug("Progress update failed: %s", e)
+
+    return progress, state
+
+
+async def _download_with_timeout(message: Message, dest: Path, progress_cb=None) -> None:
+    """Download media with timeout and cleanup on failure."""
+    try:
+        await asyncio.wait_for(
+            message.download(file_name=str(dest), progress=progress_cb),
+            timeout=DOWNLOAD_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        # Clean up partial file
+        if dest.exists():
+            dest.unlink()
+        raise
 
 
 def safe_handler(func):
@@ -248,9 +335,23 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
         video = message.video or message.video_note
         ext = "mp4"
         duration = video.duration if video else None
+        remote_size = video.file_size if video else None
+
+        # Disk space check
+        disk_err = _check_disk_space(cfg, remote_size)
+        if disk_err:
+            await message.reply_text(disk_err, quote=True)
+            return
 
         dest, rel = _media_dest(cfg, "video", created_at, str(message.id), ext)
-        await message.download(file_name=str(dest))
+
+        # Download with progress and timeout
+        progress_cb, progress_state = _make_progress_callback(message)
+        try:
+            await _download_with_timeout(message, dest, progress_cb)
+        except asyncio.TimeoutError:
+            await message.reply_text("⏰ 下载超时（超过30分钟），请稍后重试。", quote=True)
+            return
 
         file_size = dest.stat().st_size if dest.exists() else None
 
@@ -295,9 +396,23 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
         audio = message.voice or message.audio
         ext = "ogg" if message.voice else (audio.file_name or "audio.mp3").split(".")[-1]
         duration = audio.duration if audio else None
+        remote_size = audio.file_size if audio else None
+
+        # Disk space check
+        disk_err = _check_disk_space(cfg, remote_size)
+        if disk_err:
+            await message.reply_text(disk_err, quote=True)
+            return
 
         dest, rel = _media_dest(cfg, "audio", created_at, str(message.id), ext)
-        await message.download(file_name=str(dest))
+
+        # Download with progress and timeout
+        progress_cb, progress_state = _make_progress_callback(message)
+        try:
+            await _download_with_timeout(message, dest, progress_cb)
+        except asyncio.TimeoutError:
+            await message.reply_text("⏰ 下载超时（超过30分钟），请稍后重试。", quote=True)
+            return
 
         file_size = dest.stat().st_size if dest.exists() else None
 
@@ -342,6 +457,7 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
         doc = message.document
         fname = doc.file_name or "file"
         ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "bin"
+        remote_size = doc.file_size if doc else None
 
         # Classify by extension
         video_exts = {"mp4", "mov", "avi", "mkv", "webm"}
@@ -365,8 +481,21 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
             transcribe_status = "not_needed"
             summarize_status = "skipped"
 
+        # Disk space check
+        disk_err = _check_disk_space(cfg, remote_size)
+        if disk_err:
+            await message.reply_text(disk_err, quote=True)
+            return
+
         dest, rel = _media_dest(cfg, media_type, created_at, str(message.id), ext)
-        await message.download(file_name=str(dest))
+
+        # Download with progress and timeout
+        progress_cb, progress_state = _make_progress_callback(message)
+        try:
+            await _download_with_timeout(message, dest, progress_cb)
+        except asyncio.TimeoutError:
+            await message.reply_text("⏰ 下载超时（超过30分钟），请稍后重试。", quote=True)
+            return
 
         file_size = dest.stat().st_size if dest.exists() else None
 
