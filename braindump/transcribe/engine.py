@@ -81,6 +81,7 @@ def get_engine() -> TranscribeEngine:
         logger.warning("Whisper not available, falling back to mock engine")
         return MockEngine()
 
+    logger.warning("Unknown transcribe engine '%s', falling back to mock engine", engine_name)
     return MockEngine()
 
 
@@ -140,6 +141,11 @@ class TranscribeWorker:
         # Startup scan: reset stuck 'processing' notes back to 'pending'
         await self._reset_stuck_notes()
 
+        if isinstance(self.engine, MockEngine):
+            logger.warning(
+                "Transcribe worker using MockEngine — audio/video notes will NOT be transcribed. "
+                "Install funasr or whisper to enable real transcription."
+            )
         logger.info("Transcribe worker started (engine: %s)", type(self.engine).__name__)
 
         # Re-enqueue any pending notes from DB
