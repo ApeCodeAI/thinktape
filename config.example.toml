@@ -18,3 +18,11 @@ whisper_device = "cpu"             # cpu | cuda
 host = "127.0.0.1"
 port = 8080
 # secret_key = "your_secret"      # Optional: enable token-based auth
+
+[review]
+enabled = true
+count = 3                          # Notes per daily review
+schedule = "09:00"                 # HH:MM in user timezone (general.timezone)
+min_age_days = 7                   # Only review notes older than this
+min_content_length = 20            # Skip very short notes
+chat_id = 123456789                # Telegram user ID (defaults to allowed_users[0])

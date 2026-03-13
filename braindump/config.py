@@ -59,12 +59,23 @@ class LLMConfig:
 
 
 @dataclass
+class ReviewConfig:
+    enabled: bool = False
+    count: int = 3
+    schedule: str = "09:00"
+    min_age_days: int = 7
+    min_content_length: int = 20
+    chat_id: int = 0
+
+
+@dataclass
 class Config:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     web: WebConfig = field(default_factory=WebConfig)
     transcribe: TranscribeConfig = field(default_factory=TranscribeConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    review: ReviewConfig = field(default_factory=ReviewConfig)
 
     @property
     def data_dir(self) -> Path:
@@ -152,6 +163,8 @@ def load_config(config_path: Path | None = None) -> Config:
             _apply_dict(cfg.transcribe, data["transcribe"])
         if "llm" in data:
             _apply_dict(cfg.llm, data["llm"])
+        if "review" in data:
+            _apply_dict(cfg.review, data["review"])
 
     return cfg
 
