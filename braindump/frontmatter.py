@@ -40,10 +40,13 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
         return {}, text
 
     yaml_block = text[len(_FM_DELIMITER) : end].strip()
-    # Body starts after the closing --- and optional newline
+    # Body starts after the closing --- and optional blank line separator
     body_start = end + 1 + len(_FM_DELIMITER)
     body = text[body_start:]
-    if body.startswith("\n"):
+    # Strip up to two leading newlines (the \n after --- and blank separator line)
+    if body.startswith("\n\n"):
+        body = body[2:]
+    elif body.startswith("\n"):
         body = body[1:]
 
     try:
