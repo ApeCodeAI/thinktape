@@ -13,6 +13,7 @@ logger = logging.getLogger("braindump")
 # Module-level references for health checks
 _transcribe_worker = None
 _summary_worker = None
+_review_scheduler = None
 
 
 def get_transcribe_worker():
@@ -23,15 +24,20 @@ def get_summary_worker():
     return _summary_worker
 
 
+def get_review_scheduler():
+    return _review_scheduler
+
+
 async def _serve_all():
-    """Start Web + Bot + Transcribe Worker + Summary Worker concurrently."""
-    global _transcribe_worker, _summary_worker
+    """Start Web + Bot + Transcribe Worker + Summary Worker + Review concurrently."""
+    global _transcribe_worker, _summary_worker, _review_scheduler
     import uvicorn
     from braindump.config import get_config, validate_llm_config
     from braindump.database import init_db
     from braindump.bot.handlers import create_bot
     from braindump.transcribe.engine import TranscribeWorker, cleanup_old_tmp_files
     from braindump.llm.summarizer import SummaryWorker
+    from braindump.review.scheduler import ReviewScheduler
     from braindump.web.app import create_app
 
     cfg = get_config()
@@ -47,6 +53,12 @@ async def _serve_all():
     logger.info("  transcribe engine: %s", cfg.transcribe.engine)
     logger.info("  llm: %s (model: %s)", "enabled" if cfg.llm.enabled else "disabled", cfg.llm.model)
     logger.info("  timezone: %s", cfg.general.timezone)
+    logger.info(
+        "  review: %s (%s, %d notes)",
+        "enabled" if cfg.review.enabled else "disabled",
+        cfg.review.schedule,
+        cfg.review.count,
+    )
     if cfg.telegram.bot_token:
         logger.info("  telegram bot: configured")
     else:
@@ -65,6 +77,9 @@ async def _serve_all():
 
     bot = create_bot(worker, summary)
     app = create_app()
+
+    review = ReviewScheduler(cfg, bot)
+    _review_scheduler = review
 
     config = uvicorn.Config(
         app,
@@ -91,6 +106,7 @@ async def _serve_all():
         tg.create_task(run_bot_task())
         tg.create_task(worker.run())
         tg.create_task(summary.run())
+        tg.create_task(review.run())
 
 
 # ── CLI commands for retry/backfill ─────────────────────────────
