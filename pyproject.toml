@@ -32,5 +32,9 @@ build-backend = "hatchling.build"
 dev = [
     "playwright>=1.58.0",
     "pytest>=9.0.2",
+    "pytest-asyncio>=0.23",
     "pytest-playwright>=0.7.2",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
