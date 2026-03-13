@@ -13,3 +13,4 @@ test-data/
 *.session-journal
 /tmp/
 .pytest_cache/
+TASK.md
