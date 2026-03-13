@@ -96,8 +96,9 @@ async def api_create_note(body: CreateNoteRequest):
     from braindump.database import _compute_display_date
     display_date = _compute_display_date(now, cfg.general.day_boundary_hour)
 
-    # Generate file path
-    date_dir = cfg.media_dir / "text" / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+    # Generate file path (use display_date so directory matches UI grouping)
+    year, month, day = display_date.split("-")
+    date_dir = cfg.media_dir / "text" / year / month / day
     date_dir.mkdir(parents=True, exist_ok=True)
     random_hex = os.urandom(4).hex()
     filename = f"{now.strftime('%Y%m%d_%H%M%S')}_web{random_hex}.md"
