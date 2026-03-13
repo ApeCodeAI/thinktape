@@ -17,6 +17,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "onnxruntime<1.24",
     "openai>=2.26.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
