@@ -1,6 +1,7 @@
 """Database operations and migrations."""
 
 import logging
+import os
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -150,37 +151,56 @@ def _compute_display_date(created_at: datetime, day_boundary_hour: int) -> str:
     return d.isoformat()
 
 
+async def _init_db_at(db_path: Path):
+    """Initialize a database at a specific path (used by rebuild_index)."""
+    db = await aiosqlite.connect(db_path)
+    db.row_factory = aiosqlite.Row
+    await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA foreign_keys=ON")
+    try:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS migrations (
+                id   INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT NOT NULL
+            )
+        """)
+        await db.commit()
+        await _run_migrations(db)
+    finally:
+        await db.close()
+
+
 async def rebuild_index():
-    """Rebuild database from filesystem. Scans media/ and transcripts/ directories."""
+    """Rebuild database from filesystem. Scans media/ and transcripts/ directories.
+
+    Builds into a temporary database file first, then atomically replaces the
+    original to avoid data loss if the rebuild fails mid-way.
+    """
     cfg = get_config()
     cfg.ensure_dirs()
 
-    # Backup existing database before deleting
-    backup_path = None
-    if cfg.db_path.exists():
-        timestamp = datetime.now(get_timezone()).strftime("%Y%m%d_%H%M%S")
-        backup_path = cfg.backup_dir / f"braindump_{timestamp}.db"
-        import shutil
-        shutil.copy2(cfg.db_path, backup_path)
-        logger.info("Backed up database to: %s", backup_path)
-        cfg.db_path.unlink()
-        logger.info("Removed old database: %s", cfg.db_path)
+    # Build into a temp file in the same directory (same filesystem for atomic rename)
+    tmp_db_path = cfg.db_path.with_suffix(".db.tmp")
+
+    # Clean up any leftover temp file from a previous failed run
+    if tmp_db_path.exists():
+        tmp_db_path.unlink()
 
     try:
-        await init_db()
-        db = await get_db()
+        await _init_db_at(tmp_db_path)
+        db = await aiosqlite.connect(tmp_db_path)
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA foreign_keys=ON")
     except Exception:
-        # Restore from backup if init fails
-        if backup_path and backup_path.exists():
-            import shutil
-            shutil.copy2(backup_path, cfg.db_path)
-            logger.error("Restored database from backup: %s", backup_path)
+        if tmp_db_path.exists():
+            tmp_db_path.unlink()
         raise
 
     now = datetime.now(get_timezone()).isoformat()
     count = 0
     media_types = ["text", "image", "video", "audio"]
-    rebuild_ok = False
 
     try:
         for media_type in media_types:
@@ -279,12 +299,29 @@ async def rebuild_index():
                 count += 1
 
         await db.commit()
-        rebuild_ok = True
         logger.info("Rebuild complete: %d notes indexed from filesystem.", count)
 
-    finally:
+    except Exception:
         await db.close()
-        if not rebuild_ok and backup_path and backup_path.exists():
-            import shutil
-            shutil.copy2(backup_path, cfg.db_path)
-            logger.error("Rebuild failed — restored database from backup: %s", backup_path)
+        if tmp_db_path.exists():
+            tmp_db_path.unlink()
+        raise
+
+    await db.close()
+
+    # Also remove WAL/SHM files for the temp db before renaming
+    for suffix in (".db.tmp-wal", ".db.tmp-shm"):
+        wal_path = cfg.db_path.with_suffix(suffix)
+        if wal_path.exists():
+            wal_path.unlink()
+
+    # Backup existing database, then atomically replace
+    if cfg.db_path.exists():
+        timestamp = datetime.now(get_timezone()).strftime("%Y%m%d_%H%M%S")
+        backup_path = cfg.backup_dir / f"braindump_{timestamp}.db"
+        import shutil
+        shutil.copy2(cfg.db_path, backup_path)
+        logger.info("Backed up old database to: %s", backup_path)
+
+    os.replace(tmp_db_path, cfg.db_path)
+    logger.info("Replaced database with rebuilt index.")

@@ -203,9 +203,9 @@ min_content_length = 20
 chat_id = 123456789                # 可留空 / 设为 0，默认取 allowed_users[0]
 
 [web]
-host = "127.0.0.1"
+host = "127.0.0.1"                # ⚠ 改成 0.0.0.0 前必须设置 secret_key
 port = 8080
-# secret_key = "your_secret"      # 启用 token 认证；/health 不受影响
+# secret_key = "your_secret"      # 暴露到网络时必填；/health 不受影响
 ```
 
 补充说明：

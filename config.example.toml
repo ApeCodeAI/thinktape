@@ -15,9 +15,9 @@ whisper_model = "small"            # tiny | base | small | medium | large-v3
 whisper_device = "cpu"             # cpu | cuda
 
 [web]
-host = "127.0.0.1"
+host = "127.0.0.1"                # ⚠ If you change this to 0.0.0.0, you MUST set secret_key below
 port = 8080
-# secret_key = "your_secret"      # Optional: enable token-based auth
+# secret_key = "your_secret"      # REQUIRED if exposed to a network (host != 127.0.0.1)
 
 [review]
 enabled = true
