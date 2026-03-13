@@ -205,10 +205,16 @@ async def rebuild_index():
                 # Compute relative path
                 rel_path = str(filepath.relative_to(cfg.data_dir))
 
-                # Read content for text notes
+                # Read content for text notes (parse frontmatter if present)
                 content = None
+                fm_meta = {}
                 if media_type == "text":
-                    content = filepath.read_text(encoding="utf-8")
+                    from braindump.frontmatter import parse_frontmatter
+                    raw_text = filepath.read_text(encoding="utf-8")
+                    fm_meta, content = parse_frontmatter(raw_text)
+                    if not fm_meta:
+                        # No frontmatter — use full text as content
+                        content = raw_text
 
                 # Check for transcript
                 transcript = None
@@ -226,15 +232,40 @@ async def rebuild_index():
                 else:
                     transcribe_status = "not_needed"
 
+                # Extract AI fields from frontmatter if present
+                import json as _json
+                ai_title = fm_meta.get("title") if fm_meta else None
+                ai_summary = fm_meta.get("summary") if fm_meta else None
+                ai_mood = fm_meta.get("mood") if fm_meta else None
+                ai_tags = None
+                fm_tags_list = fm_meta.get("tags", []) if fm_meta else []
+                if ai_title and isinstance(fm_tags_list, list) and fm_tags_list:
+                    ai_tags = _json.dumps(fm_tags_list, ensure_ascii=False)
+
+                # Determine summarize_status based on available AI data
+                if ai_title:
+                    summarize_status = "done"
+                elif media_type == "text" and content and len(content) >= cfg.llm.min_content_length:
+                    summarize_status = "skipped"
+                else:
+                    summarize_status = "skipped"
+
+                # Extract user tags: from frontmatter or content #hashtags
+                tags_str = ""
+                if fm_tags_list and isinstance(fm_tags_list, list):
+                    tags_str = ",".join(str(t) for t in fm_tags_list)
+
                 cursor = await db.execute(
                     """INSERT INTO notes
                        (content, media_type, file_path, file_size,
                         created_at, display_date, imported_at,
-                        source, source_id, transcript, transcribe_status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        source, source_id, transcript, transcribe_status,
+                        tags, ai_title, ai_summary, ai_tags, ai_mood, summarize_status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (content, media_type, rel_path, file_size,
                      created_at.isoformat(), display_date, now,
-                     source, source_id, transcript, transcribe_status),
+                     source, source_id, transcript, transcribe_status,
+                     tags_str, ai_title, ai_summary, ai_tags, ai_mood, summarize_status),
                 )
                 note_id = cursor.lastrowid
 
