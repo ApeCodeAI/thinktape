@@ -65,7 +65,7 @@ def safe_handler(func):
     return wrapper
 
 
-def create_bot(transcribe_worker=None) -> Client:
+def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
     """Create and configure the Pyrogram bot client."""
     global _bot_connected
     cfg = get_config()
@@ -162,21 +162,30 @@ def create_bot(transcribe_worker=None) -> Client:
         dest.write_text(content, encoding="utf-8")
         file_size = dest.stat().st_size
 
+        # Trigger rule: text >= min_content_length → pending, else skipped
+        summarize_status = (
+            "pending" if len(content) >= cfg.llm.min_content_length else "skipped"
+        )
+
         db = await get_db()
         try:
-            await db.execute(
+            cursor = await db.execute(
                 """INSERT INTO notes
                    (content, media_type, file_path, file_size, created_at, display_date, imported_at,
                     source, source_id, tags, is_forwarded, forward_from, forward_date,
-                    transcribe_status)
-                   VALUES (?, 'text', ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, ?, ?, 'not_needed')""",
+                    transcribe_status, summarize_status)
+                   VALUES (?, 'text', ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, ?, ?, 'not_needed', ?)""",
                 (content, rel, file_size, created_at.isoformat(), display_date, now.isoformat(),
                  str(message.id), ",".join(tags),
-                 is_forwarded, forward_from, forward_date),
+                 is_forwarded, forward_from, forward_date, summarize_status),
             )
+            note_id = cursor.lastrowid
             await db.commit()
         finally:
             await db.close()
+
+        if summary_worker and summarize_status == "pending":
+            await summary_worker.enqueue(note_id)
 
         await message.reply_text("Saved.", quote=True)
 
@@ -202,8 +211,8 @@ def create_bot(transcribe_worker=None) -> Client:
             cursor = await db.execute(
                 """INSERT INTO notes
                    (content, media_type, file_path, file_size, created_at, display_date, imported_at,
-                    source, source_id, tags, transcribe_status)
-                   VALUES (?, 'image', ?, ?, ?, ?, ?, 'telegram', ?, ?, 'not_needed')""",
+                    source, source_id, tags, transcribe_status, summarize_status)
+                   VALUES (?, 'image', ?, ?, ?, ?, ?, 'telegram', ?, ?, 'not_needed', 'skipped')""",
                 (content, rel, file_size, created_at.isoformat(), display_date, now.isoformat(),
                  str(message.id), ",".join(tags)),
             )
@@ -244,8 +253,8 @@ def create_bot(transcribe_worker=None) -> Client:
                 """INSERT INTO notes
                    (content, media_type, file_path, file_size, duration,
                     created_at, display_date, imported_at,
-                    source, source_id, tags, transcribe_status)
-                   VALUES (?, 'video', ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, 'pending')""",
+                    source, source_id, tags, transcribe_status, summarize_status)
+                   VALUES (?, 'video', ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, 'pending', 'skipped')""",
                 (content, rel, file_size, duration,
                  created_at.isoformat(), display_date, now.isoformat(),
                  str(message.id), ",".join(tags)),
@@ -291,8 +300,8 @@ def create_bot(transcribe_worker=None) -> Client:
                 """INSERT INTO notes
                    (content, media_type, file_path, file_size, duration,
                     created_at, display_date, imported_at,
-                    source, source_id, tags, transcribe_status)
-                   VALUES (?, 'audio', ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, 'pending')""",
+                    source, source_id, tags, transcribe_status, summarize_status)
+                   VALUES (?, 'audio', ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, 'pending', 'skipped')""",
                 (content, rel, file_size, duration,
                  created_at.isoformat(), display_date, now.isoformat(),
                  str(message.id), ",".join(tags)),
@@ -335,15 +344,19 @@ def create_bot(transcribe_worker=None) -> Client:
         if ext in video_exts:
             media_type = "video"
             transcribe_status = "pending"
+            summarize_status = "skipped"  # will be set to 'pending' after transcription
         elif ext in audio_exts:
             media_type = "audio"
             transcribe_status = "pending"
+            summarize_status = "skipped"  # will be set to 'pending' after transcription
         elif ext in image_exts:
             media_type = "image"
             transcribe_status = "not_needed"
+            summarize_status = "skipped"
         else:
             media_type = "text"
             transcribe_status = "not_needed"
+            summarize_status = "skipped"
 
         dest, rel = _media_dest(cfg, media_type, created_at, str(message.id), ext)
         await message.download(file_name=str(dest))
@@ -356,11 +369,11 @@ def create_bot(transcribe_worker=None) -> Client:
                 """INSERT INTO notes
                    (content, media_type, file_path, file_size,
                     created_at, display_date, imported_at,
-                    source, source_id, tags, transcribe_status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?)""",
+                    source, source_id, tags, transcribe_status, summarize_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'telegram', ?, ?, ?, ?)""",
                 (content, media_type, rel, file_size,
                  created_at.isoformat(), display_date, now.isoformat(),
-                 str(message.id), ",".join(tags), transcribe_status),
+                 str(message.id), ",".join(tags), transcribe_status, summarize_status),
             )
             note_id = cursor.lastrowid
             await db.execute(
@@ -387,17 +400,20 @@ def _extract_tags(text: str) -> list[str]:
 
 
 async def run_bot():
-    """Start the Telegram bot with its transcription worker."""
+    """Start the Telegram bot with its transcription and summary workers."""
     from braindump.transcribe.engine import TranscribeWorker
+    from braindump.llm.summarizer import SummaryWorker
 
     cfg = get_config()
     cfg.ensure_dirs()
     await init_db()
 
-    worker = TranscribeWorker()
-    bot = create_bot(worker)
+    transcribe = TranscribeWorker()
+    summary = SummaryWorker()
+    bot = create_bot(transcribe, summary)
 
-    worker_task = asyncio.create_task(worker.run())
+    transcribe_task = asyncio.create_task(transcribe.run())
+    summary_task = asyncio.create_task(summary.run())
 
     logger.info("Starting Telegram bot...")
     await bot.start()
@@ -407,6 +423,8 @@ async def run_bot():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
-        worker.stop()
-        worker_task.cancel()
+        transcribe.stop()
+        summary.stop()
+        transcribe_task.cancel()
+        summary_task.cancel()
         await bot.stop()

@@ -123,10 +123,11 @@ def _save_transcript_files(result: TranscribeResult, source_file: str, cfg):
 class TranscribeWorker:
     """Async worker that processes transcription queue."""
 
-    def __init__(self):
+    def __init__(self, summary_worker=None):
         self.queue: asyncio.Queue = asyncio.Queue()
         self.engine: TranscribeEngine | None = None
         self._running = False
+        self._summary_worker = summary_worker
 
     async def enqueue(self, note_id: int, file_path: str):
         await self.queue.put((note_id, file_path))
@@ -224,12 +225,13 @@ class TranscribeWorker:
             # Save transcript files
             _save_transcript_files(result, file_path, cfg)
 
-            # Update database
+            # Update database — also set summarize_status to 'pending'
             db = await get_db()
             try:
                 await db.execute(
                     """UPDATE notes SET transcript = ?, transcribe_status = 'done',
-                       duration = COALESCE(duration, ?)
+                       duration = COALESCE(duration, ?),
+                       summarize_status = 'pending'
                        WHERE id = ?""",
                     (result.text, result.duration or None, note_id),
                 )
@@ -238,6 +240,10 @@ class TranscribeWorker:
                 await db.close()
 
             logger.info("Transcribed note #%d: %s...", note_id, result.text[:50])
+
+            # Enqueue for summarization
+            if self._summary_worker:
+                await self._summary_worker.enqueue(note_id)
 
         except Exception as e:
             logger.error("Transcribe failed for note #%d: %s", note_id, e, exc_info=True)

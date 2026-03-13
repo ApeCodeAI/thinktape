@@ -62,12 +62,16 @@ def create_app() -> FastAPI:
     async def health_check():
         from braindump import __version__
         from braindump.bot.handlers import is_bot_connected
-        from braindump.__main__ import get_transcribe_worker
+        from braindump.__main__ import get_transcribe_worker, get_summary_worker
 
-        worker = get_transcribe_worker()
+        t_worker = get_transcribe_worker()
+        s_worker = get_summary_worker()
         transcribe_info = {
             "engine": cfg.transcribe.engine,
-            "queue": worker.queue_size() if worker else 0,
+            "queue": t_worker.queue_size() if t_worker else 0,
+        }
+        summary_info = {
+            "queue": s_worker.queue_size() if s_worker else 0,
         }
 
         return {
@@ -75,6 +79,7 @@ def create_app() -> FastAPI:
             "version": __version__,
             "bot": "connected" if is_bot_connected() else "disconnected",
             "transcribe": transcribe_info,
+            "summary": summary_info,
         }
 
     # Media files (serve from data dir)

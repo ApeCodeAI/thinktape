@@ -106,18 +106,23 @@ async def api_create_note(body: CreateNoteRequest):
 
     rel_path = str(filepath.relative_to(cfg.data_dir))
 
+    # Trigger rule: text >= min_content_length → pending, else skipped
+    summarize_status = (
+        "pending" if len(body.content) >= cfg.llm.min_content_length else "skipped"
+    )
+
     db = await get_db()
     try:
         cursor = await db.execute(
             """INSERT INTO notes
                (content, media_type, file_path, file_size,
                 created_at, display_date, imported_at,
-                source, source_id, transcribe_status, tags)
-               VALUES (?, 'text', ?, ?, ?, ?, ?, 'web', ?, 'not_needed', ?)""",
+                source, source_id, transcribe_status, tags, summarize_status)
+               VALUES (?, 'text', ?, ?, ?, ?, ?, 'web', ?, 'not_needed', ?, ?)""",
             (
                 body.content, rel_path, len(body.content.encode("utf-8")),
                 now.isoformat(), display_date, now.isoformat(),
-                f"web_{random_hex}", body.tags,
+                f"web_{random_hex}", body.tags, summarize_status,
             ),
         )
         await db.commit()
