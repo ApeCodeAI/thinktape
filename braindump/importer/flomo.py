@@ -232,7 +232,10 @@ async def import_flomo(export_path: str):
 
                 dest_dir = cfg.media_dir / "image" / year / month / day
                 dest_dir.mkdir(parents=True, exist_ok=True)
-                dest_path = dest_dir / fname
+                dest_path = (dest_dir / fname).resolve()
+                if not dest_path.is_relative_to(cfg.data_dir.resolve()):
+                    logger.warning("Destination path escapes data dir: %s", dest_path)
+                    continue
                 rel_path = f"media/image/{year}/{month}/{day}/{fname}"
 
                 shutil.copy2(src_path, dest_path)
