@@ -26,3 +26,11 @@ schedule = "09:00"                 # HH:MM in user timezone (general.timezone)
 min_age_days = 7                   # Only review notes older than this
 min_content_length = 20            # Skip very short notes
 chat_id = 123456789                # Telegram user ID (defaults to allowed_users[0])
+
+[llm]
+enabled = true
+base_url = "https://api.moonshot.cn/v1"
+model = "kimi-k2.5"
+api_key_env = "MOONSHOT_API_KEY"   # Read from environment variable, NOT stored in config
+timeout = 30
+min_content_length = 30            # Skip notes shorter than this

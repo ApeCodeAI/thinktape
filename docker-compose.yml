@@ -11,6 +11,7 @@ services:
       - ./data:/data
     environment:
       - BRAINDUMP_DATA_DIR=/data
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
