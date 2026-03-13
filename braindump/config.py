@@ -1,11 +1,14 @@
 """Configuration loading from config.toml."""
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
 from datetime import timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+_logger = logging.getLogger("braindump.config")
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -46,11 +49,22 @@ class TranscribeConfig:
 
 
 @dataclass
+class LLMConfig:
+    enabled: bool = False
+    base_url: str = "https://api.moonshot.cn/v1"
+    model: str = "kimi-k2.5"
+    api_key_env: str = "MOONSHOT_API_KEY"
+    timeout: int = 30
+    min_content_length: int = 30
+
+
+@dataclass
 class Config:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     web: WebConfig = field(default_factory=WebConfig)
     transcribe: TranscribeConfig = field(default_factory=TranscribeConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
 
     @property
     def data_dir(self) -> Path:
@@ -79,6 +93,10 @@ class Config:
     @property
     def backup_dir(self) -> Path:
         return self.data_dir / "backup"
+
+    def get_llm_api_key(self) -> str:
+        """Read LLM API key from the environment variable specified in config."""
+        return os.environ.get(self.llm.api_key_env, "")
 
     def ensure_dirs(self):
         """Create all required directories."""
@@ -132,6 +150,8 @@ def load_config(config_path: Path | None = None) -> Config:
             _apply_dict(cfg.web, data["web"])
         if "transcribe" in data:
             _apply_dict(cfg.transcribe, data["transcribe"])
+        if "llm" in data:
+            _apply_dict(cfg.llm, data["llm"])
 
     return cfg
 
@@ -146,6 +166,19 @@ def get_config() -> Config:
         _config = load_config()
         _config.ensure_dirs()
     return _config
+
+
+def validate_llm_config(cfg: Config) -> None:
+    """Check LLM config at startup. If enabled but no API key, warn and disable."""
+    if not cfg.llm.enabled:
+        return
+    api_key = cfg.get_llm_api_key()
+    if not api_key:
+        _logger.warning(
+            "LLM enabled but %s is empty — auto-disabling LLM summarization",
+            cfg.llm.api_key_env,
+        )
+        cfg.llm.enabled = False
 
 
 def get_timezone() -> ZoneInfo:
