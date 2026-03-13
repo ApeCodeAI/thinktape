@@ -178,7 +178,7 @@ class SummaryWorker:
         db = await get_db()
         try:
             cursor = await db.execute(
-                "SELECT id, content, transcript, media_type, duration FROM notes WHERE id = ?",
+                "SELECT id, content, transcript, media_type, duration, file_path FROM notes WHERE id = ?",
                 (note_id,),
             )
             row = await cursor.fetchone()
@@ -238,6 +238,30 @@ class SummaryWorker:
                 await db.commit()
             finally:
                 await db.close()
+
+            # Update .md frontmatter if this is a text note with a file
+            file_path = note.get("file_path") or ""
+            if file_path.endswith(".md"):
+                try:
+                    from braindump.frontmatter import (
+                        build_summary_frontmatter,
+                        write_frontmatter_to_file,
+                    )
+                    from pathlib import Path
+
+                    abs_path = cfg.data_dir / file_path
+                    fm_updates = build_summary_frontmatter(
+                        ai_title=result["title"],
+                        ai_tags_json=tags_json,
+                        ai_mood=result["mood"],
+                        ai_summary=result["summary"],
+                    )
+                    write_frontmatter_to_file(abs_path, fm_updates)
+                except Exception as fm_err:
+                    logger.warning(
+                        "Failed to update frontmatter for note #%d: %s",
+                        note_id, fm_err,
+                    )
 
             logger.info(
                 "Summarized note #%d: %s", note_id, result["title"]

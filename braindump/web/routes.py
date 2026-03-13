@@ -102,7 +102,17 @@ async def api_create_note(body: CreateNoteRequest):
     random_hex = os.urandom(4).hex()
     filename = f"{now.strftime('%Y%m%d_%H%M%S')}_web{random_hex}.md"
     filepath = date_dir / filename
-    filepath.write_text(body.content, encoding="utf-8")
+
+    # Write .md file with frontmatter
+    from braindump.frontmatter import build_creation_frontmatter, render_frontmatter
+    user_tags = [t.strip() for t in body.tags.split(",") if t.strip()] if body.tags else []
+    fm = build_creation_frontmatter(
+        created_at=now.isoformat(),
+        source="web",
+        media_type="text",
+        tags=user_tags,
+    )
+    filepath.write_text(render_frontmatter(fm, body.content), encoding="utf-8")
 
     rel_path = str(filepath.relative_to(cfg.data_dir))
 
@@ -158,14 +168,19 @@ async def api_update_note(note_id: int, body: UpdateNoteRequest):
         if body.content is not None:
             updates.append("content = ?")
             params.append(body.content)
-            # Update .md file for text notes
+            # Update .md file for text notes (preserve frontmatter)
             if note["media_type"] == "text" and note["file_path"]:
                 cfg = get_config()
                 filepath = cfg.data_dir / note["file_path"]
                 if filepath.exists():
-                    filepath.write_text(body.content, encoding="utf-8")
+                    from braindump.frontmatter import parse_frontmatter, render_frontmatter
+                    old_text = filepath.read_text(encoding="utf-8")
+                    existing_meta, _ = parse_frontmatter(old_text)
+                    filepath.write_text(
+                        render_frontmatter(existing_meta, body.content), encoding="utf-8"
+                    )
                     updates.append("file_size = ?")
-                    params.append(len(body.content.encode("utf-8")))
+                    params.append(filepath.stat().st_size)
 
         if body.tags is not None:
             updates.append("tags = ?")
