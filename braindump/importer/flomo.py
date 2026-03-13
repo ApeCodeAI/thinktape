@@ -8,6 +8,7 @@ Parses the exported HTML file from Flomo, extracts notes with:
 """
 
 import hashlib
+import logging
 import re
 import shutil
 from datetime import datetime, timedelta
@@ -17,6 +18,8 @@ from bs4 import BeautifulSoup
 
 from braindump.config import get_config, get_timezone
 from braindump.database import get_db, init_db
+
+logger = logging.getLogger("braindump.importer")
 
 # Match hashtags in text: #tag or #parent/child, but not URLs or CSS colors
 TAG_PATTERN = re.compile(r"(?:^|\s)#([a-zA-Z\u4e00-\u9fff][\w/\u4e00-\u9fff]*)")
@@ -75,7 +78,7 @@ def parse_flomo_html(html_path: Path) -> list[dict]:
         try:
             created_at = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=get_timezone())
         except ValueError:
-            print(f"  Warning: cannot parse time '{time_str}', skipping memo #{idx}")
+            logger.warning("Cannot parse time '%s', skipping memo #%d", time_str, idx)
             continue
 
         # Extract content
@@ -133,14 +136,14 @@ async def import_flomo(export_path: str):
     # Find the HTML file
     html_files = list(export_dir.glob("*.html"))
     if not html_files:
-        print(f"Error: No HTML file found in {export_dir}")
+        logger.error("No HTML file found in %s", export_dir)
         return
     html_path = html_files[0]
-    print(f"Parsing: {html_path.name}")
+    logger.info("Parsing: %s", html_path.name)
 
     # Parse
     notes = parse_flomo_html(html_path)
-    print(f"Found {len(notes)} notes")
+    logger.info("Found %d notes", len(notes))
 
     if not notes:
         return
@@ -212,14 +215,14 @@ async def import_flomo(export_path: str):
             for img_idx, img_src in enumerate(note["images"]):
                 # Sanitize img_src: reject absolute paths and .. segments
                 if img_src.startswith("/") or ".." in img_src.split("/"):
-                    print(f"  Warning: rejecting unsafe image path: {img_src}")
+                    logger.warning("Rejecting unsafe image path: %s", img_src)
                     continue
                 src_path = (export_dir / img_src).resolve()
                 if not src_path.is_relative_to(export_dir.resolve()):
-                    print(f"  Warning: image path escapes export dir: {img_src}")
+                    logger.warning("Image path escapes export dir: %s", img_src)
                     continue
                 if not src_path.exists():
-                    print(f"  Warning: image not found: {src_path}")
+                    logger.warning("Image not found: %s", src_path)
                     continue
 
                 ext = src_path.suffix.lstrip(".")
@@ -255,10 +258,7 @@ async def import_flomo(export_path: str):
             imported += 1
 
         await db.commit()
-        print(f"\nImport complete:")
-        print(f"  Imported: {imported} notes")
-        print(f"  Skipped (duplicates): {skipped}")
-        print(f"  Images copied: {images_copied}")
+        logger.info("Import complete: imported=%d, skipped=%d, images=%d", imported, skipped, images_copied)
 
     finally:
         await db.close()
