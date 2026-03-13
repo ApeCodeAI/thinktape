@@ -157,9 +157,16 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
         created_at = (message.date or now).replace(tzinfo=timezone.utc).astimezone(get_timezone())
         display_date = _display_date(created_at, cfg.general.day_boundary_hour)
 
-        # Write .md file
+        # Write .md file with frontmatter
+        from braindump.frontmatter import build_creation_frontmatter, render_frontmatter
         dest, rel = _media_dest(cfg, "text", created_at, str(message.id), "md")
-        dest.write_text(content, encoding="utf-8")
+        fm = build_creation_frontmatter(
+            created_at=created_at.isoformat(),
+            source="telegram",
+            media_type="text",
+            tags=tags,
+        )
+        dest.write_text(render_frontmatter(fm, content), encoding="utf-8")
         file_size = dest.stat().st_size
 
         # Trigger rule: text >= min_content_length → pending, else skipped

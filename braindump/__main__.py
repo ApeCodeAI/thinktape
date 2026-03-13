@@ -169,6 +169,87 @@ async def _summarize_backfill(min_length: int):
         await db.close()
 
 
+async def _migrate_frontmatter():
+    """Write frontmatter to all existing .md files from database metadata."""
+    from braindump.config import get_config
+    from braindump.database import init_db, get_db
+    from braindump.frontmatter import (
+        build_creation_frontmatter,
+        build_summary_frontmatter,
+        write_frontmatter_to_file,
+        parse_frontmatter,
+    )
+
+    cfg = get_config()
+    await init_db()
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """SELECT id, file_path, created_at, source, media_type, tags,
+                      ai_title, ai_summary, ai_tags, ai_mood, summarize_status
+               FROM notes
+               WHERE is_deleted = 0 AND media_type = 'text' AND file_path IS NOT NULL"""
+        )
+        rows = await cursor.fetchall()
+    finally:
+        await db.close()
+
+    updated = 0
+    skipped = 0
+    for row in rows:
+        note = dict(row)
+        file_path = note["file_path"]
+        if not file_path or not file_path.endswith(".md"):
+            continue
+
+        abs_path = cfg.data_dir / file_path
+        if not abs_path.exists():
+            logger.warning("File not found: %s (note #%d)", abs_path, note["id"])
+            continue
+
+        # Check if already has frontmatter
+        text = abs_path.read_text(encoding="utf-8")
+        existing_meta, _ = parse_frontmatter(text)
+
+        # Build creation frontmatter
+        user_tags = [t.strip() for t in (note["tags"] or "").split(",") if t.strip()]
+        fm = build_creation_frontmatter(
+            created_at=note["created_at"],
+            source=note["source"],
+            media_type=note["media_type"],
+            tags=user_tags,
+        )
+
+        # Add summary fields if available
+        if note["summarize_status"] == "done" and note["ai_title"]:
+            summary_fm = build_summary_frontmatter(
+                ai_title=note["ai_title"],
+                ai_tags_json=note["ai_tags"] or "",
+                ai_mood=note["ai_mood"] or "",
+                ai_summary=note["ai_summary"] or "",
+            )
+            fm.update(summary_fm)
+            # Special merge for tags
+            if "tags" in summary_fm and "tags" in fm:
+                seen = set()
+                combined = []
+                for t in user_tags + (summary_fm.get("tags") or []):
+                    if t not in seen:
+                        seen.add(t)
+                        combined.append(t)
+                fm["tags"] = combined
+
+        if existing_meta:
+            # Already has frontmatter — merge
+            from braindump.frontmatter import merge_frontmatter
+            fm = merge_frontmatter(existing_meta, fm)
+
+        write_frontmatter_to_file(abs_path, fm)
+        updated += 1
+
+    logger.info("migrate-frontmatter complete: %d updated, %d skipped", updated, skipped)
+
+
 def main():
     setup_logging()
 
@@ -210,6 +291,9 @@ def main():
     retry_tr_p = sub.add_parser("retry-transcribe", help="Reset failed transcriptions to pending")
     retry_tr_p.add_argument("--all", action="store_true", dest="all_failed", help="Reset all failed transcriptions")
     retry_tr_p.add_argument("--note-id", type=int, default=None, help="Reset a specific note")
+
+    # migrate-frontmatter
+    sub.add_parser("migrate-frontmatter", help="Write frontmatter to existing .md files from DB metadata")
 
     # summarize --backfill
     sum_p = sub.add_parser("summarize", help="Summarization utilities")
@@ -264,6 +348,9 @@ def main():
 
     elif args.command == "retry-transcribe":
         asyncio.run(_retry_transcribe(args.all_failed, args.note_id))
+
+    elif args.command == "migrate-frontmatter":
+        asyncio.run(_migrate_frontmatter())
 
     elif args.command == "summarize":
         if args.backfill:
