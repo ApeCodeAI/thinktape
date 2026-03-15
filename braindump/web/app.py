@@ -61,26 +61,36 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         from braindump import __version__
-        from braindump.bot.handlers import is_bot_connected
+        from braindump.bot.handlers import get_bot_status
         from braindump.__main__ import get_transcribe_worker, get_summary_worker, get_review_scheduler
 
+        bot_status = get_bot_status()
         t_worker = get_transcribe_worker()
         s_worker = get_summary_worker()
         r_scheduler = get_review_scheduler()
-        transcribe_info = {
-            "engine": cfg.transcribe.engine,
-            "queue": t_worker.queue_size() if t_worker else 0,
-        }
-        summary_info = {
-            "queue": s_worker.queue_size() if s_worker else 0,
-        }
+
+        bot_connected = bot_status["connected"]
+        overall = "healthy" if bot_connected else "degraded"
 
         return {
-            "status": "ok",
+            "status": overall,
             "version": __version__,
-            "bot": "connected" if is_bot_connected() else "disconnected",
-            "transcribe": transcribe_info,
-            "summary": summary_info,
+            "bot_connected": bot_connected,
+            "uptime_seconds": bot_status["uptime_seconds"],
+            "message_count": bot_status["message_count"],
+            "components": {
+                "web": "ok",
+                "bot": "connected" if bot_connected else "disconnected",
+                "transcribe": {
+                    "status": "ok" if t_worker else "not_running",
+                    "engine": cfg.transcribe.engine,
+                    "queue": t_worker.queue_size() if t_worker else 0,
+                },
+                "summary": {
+                    "status": "ok" if s_worker else "not_running",
+                    "queue": s_worker.queue_size() if s_worker else 0,
+                },
+            },
             "last_review": r_scheduler.last_review if r_scheduler else None,
         }
 
