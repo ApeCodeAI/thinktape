@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
+from pyrogram.handlers import DisconnectHandler
 from pyrogram.types import Message
 
 from braindump.config import get_config, get_timezone
@@ -21,10 +23,27 @@ DOWNLOAD_TIMEOUT = 1800
 
 # Module-level bot status for health checks
 _bot_connected = False
+_bot_start_time: float | None = None
+_last_message_time: float | None = None
+_message_count: int = 0
 
 
 def is_bot_connected() -> bool:
     return _bot_connected
+
+
+def get_bot_status() -> dict:
+    """Return bot status info for /status and /health."""
+    import time as _time
+    uptime = None
+    if _bot_start_time is not None:
+        uptime = _time.monotonic() - _bot_start_time
+    return {
+        "connected": _bot_connected,
+        "uptime_seconds": round(uptime, 1) if uptime is not None else None,
+        "last_message_time": _last_message_time,
+        "message_count": _message_count,
+    }
 
 
 def _now() -> datetime:
@@ -141,8 +160,17 @@ def safe_handler(func):
     """Decorator that wraps bot handlers with error handling."""
     @functools.wraps(func)
     async def wrapper(client, message):
+        global _last_message_time, _message_count
         try:
             await func(client, message)
+            _last_message_time = time.time()
+            _message_count += 1
+        except FloodWait as e:
+            logger.warning("FloodWait in %s: sleeping %d seconds", func.__name__, e.value)
+            await asyncio.sleep(e.value + 1)
+        except (ConnectionError, OSError) as e:
+            # Network errors — don't try to reply (would likely fail too)
+            logger.error("Network error in %s: %s", func.__name__, e, exc_info=True)
         except Exception as e:
             logger.error("Handler %s failed: %s", func.__name__, e, exc_info=True)
             try:
@@ -220,6 +248,44 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
             await message.reply_text("\n\n".join(lines))
         finally:
             await db.close()
+
+    @bot.on_message(allowed_filter & filters.command("status"))
+    @safe_handler
+    async def on_status(client: Client, message: Message):
+        from braindump import __version__
+        status = get_bot_status()
+
+        lines = [f"**braindump** v{__version__}\n"]
+
+        # Connection
+        lines.append(f"Bot: {'connected' if status['connected'] else 'disconnected'}")
+
+        # Uptime
+        if status["uptime_seconds"] is not None:
+            secs = int(status["uptime_seconds"])
+            hours, remainder = divmod(secs, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            if hours > 0:
+                lines.append(f"Uptime: {hours}h {minutes}m {seconds}s")
+            elif minutes > 0:
+                lines.append(f"Uptime: {minutes}m {seconds}s")
+            else:
+                lines.append(f"Uptime: {seconds}s")
+
+        # Message stats
+        lines.append(f"Messages processed: {status['message_count']}")
+        if status["last_message_time"]:
+            from datetime import datetime
+            last = datetime.fromtimestamp(status["last_message_time"], tz=get_timezone())
+            lines.append(f"Last message: {last.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Worker queues
+        if transcribe_worker:
+            lines.append(f"Transcribe queue: {transcribe_worker.queue_size()}")
+        if summary_worker:
+            lines.append(f"Summary queue: {summary_worker.queue_size()}")
+
+        await message.reply_text("\n".join(lines))
 
     @bot.on_message(allowed_filter & filters.text & ~filters.command(["start", "stats", "recent", "status"]))
     @safe_handler
@@ -524,6 +590,14 @@ def create_bot(transcribe_worker=None, summary_worker=None) -> Client:
             await transcribe_worker.enqueue(note_id, rel)
         await message.reply_text(f"File saved ({media_type}).", quote=True)
 
+    # Register disconnect handler for connection state tracking
+    async def on_disconnect(client):
+        global _bot_connected
+        logger.warning("Pyrogram disconnect event received")
+        _bot_connected = False
+
+    bot.add_handler(DisconnectHandler(on_disconnect))
+
     return bot
 
 
@@ -537,6 +611,8 @@ def _extract_tags(text: str) -> list[str]:
 
 async def run_bot():
     """Start the Telegram bot with its transcription and summary workers."""
+    global _bot_connected, _bot_start_time
+
     from braindump.transcribe.engine import TranscribeWorker
     from braindump.llm.summarizer import SummaryWorker
 
@@ -551,11 +627,47 @@ async def run_bot():
     transcribe_task = asyncio.create_task(transcribe.run())
     summary_task = asyncio.create_task(summary.run())
 
+    max_retries = 10
+    base_delay = 5
+    retries = 0
+
     logger.info("Starting Telegram bot...")
-    await bot.start()
-    logger.info("Bot is running. Press Ctrl+C to stop.")
     try:
-        await asyncio.Event().wait()  # Run forever
+        while True:
+            try:
+                await bot.start()
+                _bot_connected = True
+                _bot_start_time = time.monotonic()
+                logger.info("Bot connected. Press Ctrl+C to stop.")
+                retries = 0
+
+                while True:
+                    await asyncio.sleep(60)
+                    if not bot.is_connected:
+                        logger.warning("Bot disconnected, will reconnect...")
+                        break
+            except FloodWait as e:
+                logger.warning("FloodWait: sleeping %d seconds", e.value)
+                await asyncio.sleep(e.value + 1)
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:
+                retries += 1
+                if retries > max_retries:
+                    logger.error("Max retries (%d) reached, giving up", max_retries)
+                    raise
+                delay = min(base_delay * (2 ** (retries - 1)), 300)
+                logger.error(
+                    "Bot error (retry %d/%d in %ds): %s",
+                    retries, max_retries, delay, e,
+                )
+                await asyncio.sleep(delay)
+            finally:
+                _bot_connected = False
+                try:
+                    await bot.stop()
+                except Exception:
+                    pass
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
@@ -563,4 +675,3 @@ async def run_bot():
         summary.stop()
         transcribe_task.cancel()
         summary_task.cancel()
-        await bot.stop()

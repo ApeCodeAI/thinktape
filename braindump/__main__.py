@@ -90,23 +90,56 @@ async def _serve_all():
     server = uvicorn.Server(config)
 
     async def run_bot_task():
+        import time as _time
         import braindump.bot.handlers as bot_mod
-        await bot.start()
-        bot_mod._bot_connected = True
-        logger.info("Bot is running.")
-        try:
-            await asyncio.Event().wait()
-        finally:
-            bot_mod._bot_connected = False
-            await bot.stop()
+        from pyrogram.errors import FloodWait
+
+        max_retries = 10
+        base_delay = 5  # seconds
+        retries = 0
+
+        while True:
+            try:
+                await bot.start()
+                bot_mod._bot_connected = True
+                bot_mod._bot_start_time = _time.monotonic()
+                logger.info("Bot connected successfully.")
+                retries = 0  # reset on successful connection
+
+                # Monitor connection with periodic ping
+                while True:
+                    await asyncio.sleep(60)
+                    if not bot.is_connected:
+                        logger.warning("Bot disconnected, will reconnect...")
+                        break
+            except FloodWait as e:
+                logger.warning("FloodWait: sleeping %d seconds", e.value)
+                await asyncio.sleep(e.value + 1)
+            except Exception as e:
+                retries += 1
+                if retries > max_retries:
+                    logger.error("Max retries (%d) reached, giving up", max_retries)
+                    raise
+                delay = min(base_delay * (2 ** (retries - 1)), 300)  # max 5 min
+                logger.error(
+                    "Bot error (retry %d/%d in %ds): %s",
+                    retries, max_retries, delay, e,
+                )
+                await asyncio.sleep(delay)
+            finally:
+                bot_mod._bot_connected = False
+                try:
+                    await bot.stop()
+                except Exception:
+                    pass
 
     # TaskGroup: if any task crashes, all are cancelled → main exits → Docker restarts
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(server.serve())
-        tg.create_task(run_bot_task())
-        tg.create_task(worker.run())
-        tg.create_task(summary.run())
-        tg.create_task(review.run())
+        tg.create_task(server.serve(), name="web")
+        tg.create_task(run_bot_task(), name="bot")
+        tg.create_task(worker.run(), name="transcribe")
+        tg.create_task(summary.run(), name="summary")
+        tg.create_task(review.run(), name="review")
 
 
 # ── CLI commands for retry/backfill ─────────────────────────────
@@ -343,8 +376,14 @@ def main():
         except* KeyboardInterrupt:
             logger.info("Shutting down...")
         except* Exception as eg:
+            from pyrogram.errors import FloodWait
             for exc in eg.exceptions:
-                logger.error("Service crashed: %s", exc, exc_info=exc)
+                if isinstance(exc, FloodWait):
+                    logger.error("Service crashed due to Telegram FloodWait (%ds): %s", exc.value, exc)
+                elif isinstance(exc, (ConnectionError, OSError)):
+                    logger.error("Service crashed due to network error: %s", exc, exc_info=exc)
+                else:
+                    logger.error("Service crashed: %s", exc, exc_info=exc)
             sys.exit(1)
 
     elif args.command == "upgrade":
