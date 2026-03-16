@@ -9,9 +9,11 @@ RUN npm run build
 # Stage 2: Python runtime
 FROM python:3.12-slim
 
-# System deps for faster-whisper + pyrofork
+# System deps for faster-whisper + pyrofork + tgcrypto build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    gcc \
+    libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
