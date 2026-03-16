@@ -124,8 +124,11 @@ mkdir -p data
 cp config.example.toml data/config.toml
 # 编辑 data/config.toml
 
-# 启动
+# 启动（默认数据目录为 ./data）
 docker compose up -d
+
+# 或指定外部数据目录
+BRAINDUMP_DATA_DIR=~/braindump-data docker compose up -d
 
 # 查看日志
 docker compose logs -f
@@ -142,7 +145,7 @@ Docker 镜像特点：
 
 如果你要在 Docker 里启用 AI 摘要，记得把 `MOONSHOT_API_KEY`（或者你在 `[llm].api_key_env` 里配置的变量名）一起注入到容器环境里。
 
-迁移已有数据：`cp -r ~/braindump-data/* ./data/`
+迁移已有数据：`cp -r ~/braindump-data/* ./data/`（或者直接用 `BRAINDUMP_DATA_DIR=~/braindump-data` 指向已有目录）
 
 ## 常用命令
 
