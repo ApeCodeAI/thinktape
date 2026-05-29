@@ -88,6 +88,18 @@ async def run_migrations():
 
 async def show_stats():
     """Show database statistics."""
+    stats = await get_stats()
+    logger.info("Total notes: %d", stats["total"])
+    logger.info("By type:")
+    for media_type, count in stats["by_type"].items():
+        logger.info("  %s: %d", media_type, count)
+    logger.info("By source:")
+    for source, count in stats["by_source"].items():
+        logger.info("  %s: %d", source, count)
+
+
+async def get_stats() -> dict:
+    """Return database statistics as a JSON-serializable dictionary."""
     await init_db()
     db = await get_db()
     try:
@@ -104,25 +116,30 @@ async def show_stats():
         )
         by_source = await cursor.fetchall()
 
-        logger.info("Total notes: %d", total)
-        logger.info("By type:")
-        for row in by_type:
-            logger.info("  %s: %d", row[0], row[1])
-        logger.info("By source:")
-        for row in by_source:
-            logger.info("  %s: %d", row[0], row[1])
+        return {
+            "ok": True,
+            "total": total,
+            "by_type": {row[0]: row[1] for row in by_type},
+            "by_source": {row[0]: row[1] for row in by_source},
+        }
     finally:
         await db.close()
 
 
 # Filename pattern: YYYYMMDD_HHmmss_{source}{id}.{ext}
-# Source prefixes are always 2 chars: tg, fl, mm, im
 _FILENAME_RE = re.compile(
-    r"^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(tg|fl|mm|im)(.+)\..+$"
+    r"^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})_(tg|fl|mm|im|web|cli)(.+)\..+$"
 )
 
 # Source prefix mapping
-_SOURCE_MAP = {"tg": "telegram", "fl": "flomo", "mm": "memos", "im": "manual"}
+_SOURCE_MAP = {
+    "tg": "telegram",
+    "fl": "flomo",
+    "mm": "memos",
+    "im": "manual",
+    "web": "web",
+    "cli": "cli",
+}
 
 
 def _parse_media_filename(name: str) -> dict | None:

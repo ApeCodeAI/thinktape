@@ -20,7 +20,7 @@ port = 8080
 # secret_key = "your_secret"      # REQUIRED if exposed to a network (host != 127.0.0.1)
 
 [review]
-enabled = true
+enabled = false
 count = 3                          # Notes per daily review
 schedule = "09:00"                 # HH:MM in user timezone (general.timezone)
 min_age_days = 7                   # Only review notes older than this
@@ -28,7 +28,7 @@ min_content_length = 20            # Skip very short notes
 chat_id = 123456789                # Telegram user ID (defaults to allowed_users[0])
 
 [llm]
-enabled = true
+enabled = false
 base_url = "https://api.moonshot.cn/v1"
 model = "kimi-k2.5"
 api_key_env = "MOONSHOT_API_KEY"   # Read from environment variable, NOT stored in config

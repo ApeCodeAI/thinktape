@@ -305,6 +305,40 @@ def main():
     parser = argparse.ArgumentParser(prog="braindump", description="Personal expression material library")
     sub = parser.add_subparsers(dest="command")
 
+    # init
+    init_p = sub.add_parser("init", help="Initialize data directory, config, and database")
+    init_p.add_argument("--data-dir", default=None, help="Data directory (default: ~/braindump-data)")
+    init_p.add_argument("--force", action="store_true", help="Overwrite config.toml if it already exists")
+    init_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    # add
+    add_p = sub.add_parser("add", help="Create a text note from CLI")
+    add_p.add_argument("text", nargs="?", help="Text content. Use --stdin to read from stdin")
+    add_p.add_argument("--stdin", action="store_true", help="Read note content from stdin")
+    add_p.add_argument("--tag", action="append", default=[], help="Add a tag (repeatable)")
+    add_p.add_argument("--tags", default="", help="Comma-separated tags")
+    add_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    # list
+    list_p = sub.add_parser("list", help="List recent notes")
+    list_p.add_argument("--limit", type=int, default=20)
+    list_p.add_argument("--offset", type=int, default=0)
+    list_p.add_argument("--type", dest="media_type", default=None, help="Filter by media type")
+    list_p.add_argument("--tag", default=None, help="Filter by tag")
+    list_p.add_argument("--q", default=None, help="Full-text search query")
+    list_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    # search
+    search_p = sub.add_parser("search", help="Search notes")
+    search_p.add_argument("query", help="Search query")
+    search_p.add_argument("--limit", type=int, default=20)
+    search_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    # show
+    show_p = sub.add_parser("show", help="Show a note")
+    show_p.add_argument("note_id", type=int)
+    show_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
     # serve
     sub.add_parser("serve", help="Start all services (Bot + Web + Transcribe + Summary)")
 
@@ -323,7 +357,8 @@ def main():
     sub.add_parser("bot", help="Start Telegram Bot only")
 
     # stats
-    sub.add_parser("stats", help="Show statistics")
+    stats_p = sub.add_parser("stats", help="Show statistics")
+    stats_p.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     # upgrade
     sub.add_parser("upgrade", help="Run database migrations")
@@ -355,7 +390,94 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    if args.command == "web":
+    if args.command == "init":
+        from pathlib import Path
+        from braindump.cli import emit, init_project
+
+        result = asyncio.run(init_project(Path(args.data_dir) if args.data_dir else None, force=args.force))
+        emit(
+            result,
+            args.json,
+            [
+                f"Initialized braindump data dir: {result['data_dir']}",
+                f"Config: {result['config_path']}",
+                f"Database: {result['db_path']}",
+                "Next: braindump add \"your thought\" --json",
+            ],
+        )
+
+    elif args.command == "add":
+        from braindump.cli import add_text_note, emit, read_stdin_or_arg
+
+        try:
+            content = read_stdin_or_arg(args.text, args.stdin)
+            result = asyncio.run(add_text_note(content, args.tag, args.tags))
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(2)
+        emit(
+            result,
+            args.json,
+            [
+                f"Saved note #{result['id']}",
+                f"File: {result['file_path']}",
+            ],
+        )
+
+    elif args.command == "list":
+        from braindump.cli import emit, list_notes
+
+        result = asyncio.run(
+            list_notes(
+                limit=args.limit,
+                offset=args.offset,
+                media_type=args.media_type,
+                tag=args.tag,
+                query=args.q,
+            )
+        )
+        emit(
+            result,
+            args.json,
+            [
+                f"{note['id']}\t{note['created_at']}\t{note['type']}\t{note['title']}"
+                for note in result["notes"]
+            ],
+        )
+
+    elif args.command == "search":
+        from braindump.cli import emit, search_notes
+
+        result = asyncio.run(search_notes(args.query, limit=args.limit))
+        emit(
+            result,
+            args.json,
+            [
+                f"{note['id']}\t{note['created_at']}\t{note['type']}\t{note['title']}"
+                for note in result["notes"]
+            ],
+        )
+
+    elif args.command == "show":
+        from braindump.cli import emit, show_note
+
+        try:
+            result = asyncio.run(show_note(args.note_id))
+        except LookupError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(3)
+        note = result["note"]
+        content = note.get("content") or note.get("transcript") or ""
+        emit(
+            result,
+            args.json,
+            [
+                f"#{note['id']} {note['created_at']} [{note['media_type']}]",
+                content,
+            ],
+        )
+
+    elif args.command == "web":
         from braindump.web.app import run_web
         run_web(host=args.host, port=args.port)
 
@@ -391,8 +513,14 @@ def main():
         asyncio.run(run_migrations())
 
     elif args.command == "stats":
-        from braindump.database import show_stats
-        asyncio.run(show_stats())
+        if args.json:
+            from braindump.cli import emit
+            from braindump.database import get_stats
+
+            emit(asyncio.run(get_stats()), True)
+        else:
+            from braindump.database import show_stats
+            asyncio.run(show_stats())
 
     elif args.command == "rebuild-index":
         from braindump.database import rebuild_index

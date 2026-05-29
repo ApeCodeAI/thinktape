@@ -97,12 +97,15 @@ cd braindump
 uv sync
 
 # 配置
-mkdir -p ~/braindump-data
-cp config.example.toml ~/braindump-data/config.toml
-# 编辑 config.toml 填入你的 Telegram 凭证
+uv run python -m braindump init
+# 按需编辑 ~/braindump-data/config.toml 填入 Telegram / LLM / Review 配置
 
 # 可选：启用 AI 摘要（也可以改成任意 OpenAI-compatible 服务）
 export MOONSHOT_API_KEY="your_api_key"
+
+# CLI 记录（AI / 脚本友好）
+uv run python -m braindump add "今天想表达的一个观点 #表达" --json
+uv run python -m braindump search "观点" --json
 
 # 导入 Flomo（可选）
 uv run python -m braindump import flomo /path/to/flomo-export/
@@ -150,6 +153,13 @@ Docker 镜像特点：
 ## 常用命令
 
 ```bash
+uv run python -m braindump init --json
+uv run python -m braindump add "一条文字记录 #tag" --json
+uv run python -m braindump add --stdin --tag draft --json
+uv run python -m braindump list --limit 20 --json
+uv run python -m braindump search "agent 落地" --json
+uv run python -m braindump show 123 --json
+uv run python -m braindump stats --json
 uv run python -m braindump rebuild-index
 uv run python -m braindump retry-transcribe --all
 uv run python -m braindump retry-summary --all
@@ -251,6 +261,7 @@ port = 8080
 
 ## 下一步
 
+- [ ] 表达挖掘 CLI：`digest` / `cluster` / `draft`
 - [ ] UI 再打磨一轮，尤其是移动端时间线和详情页体验
 - [ ] 更多导入源（Day One、Apple Notes...）
 - [ ] GPU / 远程 ASR 的配置再做顺手一点
