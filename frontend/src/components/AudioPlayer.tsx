@@ -63,14 +63,14 @@ export function AudioPlayer({ src }: Props) {
   };
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-accent-soft/60 border border-accent/15">
+    <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl bg-accent-soft/60 border border-accent/10">
       <audio ref={audioRef} src={src} preload="metadata" />
       <button
         onClick={toggle}
-        className="w-9 h-9 rounded-full bg-accent text-white grid place-items-center shadow-sm hover:bg-amber-600 transition-colors shrink-0"
+        className="w-9 h-9 rounded-full bg-accent text-white grid place-items-center hover:bg-[#86492a] shrink-0"
         aria-label={playing ? "暂停" : "播放"}
       >
-        {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+        {playing ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
       </button>
       <div className="flex-1 min-w-0">
         <div
@@ -78,11 +78,11 @@ export function AudioPlayer({ src }: Props) {
           onClick={onSeek}
         >
           <div
-            className="h-full bg-accent rounded-full transition-all"
+            className="h-full bg-accent rounded-full"
             style={{ width: `${progress * 100}%` }}
           />
         </div>
-        <div className="text-xs text-muted mt-1 tabular-nums flex justify-between">
+        <div className="text-[11px] text-muted mt-1 font-serif tabular-nums flex justify-between">
           <span>{fmt(current)}</span>
           <span>{fmt(duration)}</span>
         </div>

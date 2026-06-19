@@ -1,4 +1,4 @@
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type Item, type Stats } from "@/lib/api";
@@ -78,7 +78,6 @@ export default function App() {
     [type, tag, debouncedQuery],
   );
 
-  // Reset whenever filters/query change.
   useEffect(() => {
     setItems([]);
     setDone(false);
@@ -89,7 +88,6 @@ export default function App() {
     refreshStats();
   }, [refreshStats]);
 
-  // Infinite scroll.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -133,27 +131,27 @@ export default function App() {
         topTags={topTags}
       />
 
-      <main className="max-w-3xl mx-auto px-4 pb-20">
+      <main className="max-w-3xl mx-auto px-5 pb-24">
         {error && (
-          <div className="my-4 p-4 rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm">
+          <div className="my-4 p-4 rounded-2xl border border-[rgba(179,58,58,0.25)] bg-[rgba(179,58,58,0.06)] text-[color:var(--color-danger)] text-sm">
             加载失败: {error}
           </div>
         )}
 
         {empty && (
-          <div className="my-16 text-center text-muted">
-            <Sparkles size={32} className="mx-auto mb-3 text-accent/50" />
-            <p className="text-sm">
+          <div className="my-20 text-center text-muted">
+            <div className="font-serif text-meta text-2xl mb-3">✦</div>
+            <p className="font-serif italic text-[15px] text-fg-2">
               {debouncedQuery
-                ? `没有匹配 “${debouncedQuery}” 的记录`
+                ? `没有匹配 "${debouncedQuery}" 的记录`
                 : tag
-                  ? `“${tag}” 还没有记录`
+                  ? `"${tag}" 还没有记录`
                   : "还没有任何记录，发送消息给 Bot 试试吧"}
             </p>
           </div>
         )}
 
-        <div className="space-y-3 mt-3">
+        <div className="space-y-4 mt-4">
           {items.map((i) => (
             <ItemCard
               key={i.id}
@@ -167,12 +165,14 @@ export default function App() {
 
         <div ref={sentinelRef} className="h-8" />
         {loading && (
-          <div className="py-6 grid place-items-center text-muted">
+          <div className="py-6 grid place-items-center text-meta">
             <Loader2 size={18} className="animate-spin" />
           </div>
         )}
         {done && items.length > 0 && (
-          <div className="py-6 text-center text-xs text-muted">— 到底啦 —</div>
+          <div className="py-8 text-center text-[13px] text-muted font-serif italic tracking-wide">
+            — 到底啦 —
+          </div>
         )}
       </main>
     </div>

@@ -33,7 +33,7 @@ export function ImageGrid({ itemId, images, imageUrl }: Props) {
           <button
             key={name}
             onClick={() => setZoom(imageUrl(itemId, name))}
-            className="aspect-square overflow-hidden rounded-lg bg-line/50 border border-line group"
+            className="aspect-square overflow-hidden rounded-xl bg-surface-warm/40 border border-border-soft group"
           >
             <img
               src={imageUrl(itemId, name)}

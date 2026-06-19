@@ -1,5 +1,4 @@
 import { Search, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface Props {
   query: string;
@@ -8,34 +7,30 @@ interface Props {
 
 export function Header({ query, onQueryChange }: Props) {
   return (
-    <header className="sticky top-0 z-10 bg-paper/85 backdrop-blur-md border-b border-line">
-      <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-        <div className="flex items-center gap-2 select-none">
-          <div className="w-8 h-8 rounded-lg bg-accent grid place-items-center text-white font-bold text-sm shadow-sm">
-            B
-          </div>
-          <h1 className="font-bold text-lg tracking-tight">braindump</h1>
+    <header className="sticky top-0 z-10 bg-bg/80 backdrop-blur-md border-b border-border-soft">
+      <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-4">
+        <div className="flex items-baseline gap-2 select-none">
+          <h1 className="font-serif text-2xl tracking-tight text-fg leading-none">
+            braindump
+          </h1>
+          <span className="font-serif italic text-sm text-meta leading-none">
+            ·&nbsp;a paper desk
+          </span>
         </div>
         <div className="flex-1" />
-        <div
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-line",
-            "transition-shadow focus-within:shadow-sm focus-within:border-accent/40",
-            "w-full max-w-xs",
-          )}
-        >
-          <Search size={15} className="text-muted shrink-0" />
+        <div className="group flex items-center gap-2 w-full max-w-xs border-b border-border focus-within:border-accent transition-colors">
+          <Search size={14} className="text-muted shrink-0" />
           <input
             type="search"
-            placeholder="搜索..."
+            placeholder="搜索…"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            className="bg-transparent outline-none text-sm flex-1 min-w-0 placeholder:text-muted"
+            className="bg-transparent outline-none text-[15px] flex-1 min-w-0 py-2 placeholder:text-muted text-fg"
           />
           {query && (
             <button
               onClick={() => onQueryChange("")}
-              className="text-muted hover:text-ink transition-colors"
+              className="text-muted hover:text-accent shrink-0"
               aria-label="清除搜索"
             >
               <X size={14} />
