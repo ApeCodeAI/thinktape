@@ -40,7 +40,7 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 
 |                    | braindump          | Flomo     | Apple Notes | Obsidian    |
 | ------------------ | ------------------ | --------- | ----------- | ----------- |
-| 语音/视频转写        | ✅ 本地 Whisper      | ✅ (付费)  | ❌           | ❌          |
+| 语音/视频转写        | ✅ 本地 Whisper 无限制 | ⚠️ 仅 1 分钟 | ❌           | ❌          |
 | AI 摘要             | ✅                  | ❌        | ❌           | (插件)       |
 | [[双链]]           | ✅ Obsidian 兼容    | ❌        | ❌           | ✅          |
 | Agent 可调用 (CLI)  | ✅                  | ❌        | ❌           | ❌          |
