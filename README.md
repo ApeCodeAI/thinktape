@@ -4,13 +4,18 @@
 
 > Voice & Video First 的个人原材料库 — AI-native, Agent-ready, Open Source
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![Stars](https://img.shields.io/github/stars/ApeCodeAI/braindump?style=social)](https://github.com/ApeCodeAI/braindump/stargazers)
+[![Sponsored by BytePass](https://img.shields.io/badge/sponsored%20by-BytePass.ai-7C3AED.svg)](https://bytepass.ai)
+
+Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](https://bytepass.ai)**
 
 </div>
 
 **braindump** 是一个 Voice & Video First 的开源个人原材料库。语音和视频是第一输入方式——走路、开车、散步时随手说，本地 Whisper 自动转写。文字、图片、链接也支持。AI 自动摘要，任何 Agent 通过 CLI 直接调用。
+
+**braindump** is part of the [ApeCode.ai](https://apecode.ai) open source ecosystem, sponsored by [BytePass.ai](https://bytepass.ai).
 
 [中文](#中文) · [English](#english)
 
@@ -195,7 +200,9 @@ uv run pytest tests/ -v
 
 ## English
 
-**braindump** is an open-source personal dump tool. Capture thoughts, voice memos, images, and bookmarks through Telegram, the Web UI, or the CLI. Voice messages are transcribed locally with Whisper. Every AI agent can read and write through a clean JSON CLI.
+**braindump** is a Voice & Video First open-source personal dump tool. Voice and video are the primary input — capture ideas while walking, driving, or cooking; local Whisper transcribes automatically. Text, images, and links are also supported. Any AI agent can read and write through a clean JSON CLI.
+
+Part of the [ApeCode.ai](https://apecode.ai) open source ecosystem, sponsored by [BytePass.ai](https://bytepass.ai).
 
 ### Why?
 
