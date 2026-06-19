@@ -36,6 +36,14 @@ export interface ListParams {
   offset?: number;
 }
 
+export interface CreateItemPayload {
+  content: string;
+  type?: "thought" | "bookmark" | "note";
+  source?: string;
+  tags?: string[];
+  bookmark_url?: string | null;
+}
+
 const BASE = "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -61,6 +69,8 @@ export const api = {
     return request<ListResponse>(`/api/items?${qs.toString()}`);
   },
   get: (id: string) => request<Item>(`/api/items/${id}`),
+  create: (body: CreateItemPayload) =>
+    request<Item>(`/api/items`, { method: "POST", body: JSON.stringify(body) }),
   patch: (id: string, body: Partial<Item>) =>
     request<Item>(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (id: string) =>

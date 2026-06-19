@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type Item, type Stats } from "@/lib/api";
+import { ComposeBox } from "@/components/ComposeBox";
 import { FilterBar } from "@/components/FilterBar";
 import { Header } from "@/components/Header";
 import { ItemCard } from "@/components/ItemCard";
@@ -111,6 +112,10 @@ export default function App() {
     setItems((prev) => prev.filter((x) => x.id !== id));
     refreshStats();
   };
+  const handleCreated = (i: Item) => {
+    setItems((prev) => [i, ...prev.filter((x) => x.id !== i.id)]);
+    refreshStats();
+  };
 
   const empty = !loading && items.length === 0 && !error;
 
@@ -132,6 +137,10 @@ export default function App() {
       />
 
       <main className="max-w-3xl mx-auto px-5 pb-24">
+        <div className="mt-2 mb-4">
+          <ComposeBox onCreated={handleCreated} />
+        </div>
+
         {error && (
           <div className="my-4 p-4 rounded-2xl border border-[rgba(179,58,58,0.25)] bg-[rgba(179,58,58,0.06)] text-[color:var(--color-danger)] text-sm">
             加载失败: {error}

@@ -12,6 +12,7 @@ from pyrogram.types import Message
 
 from .config import Config
 from .core import BrainDump
+from .summarize import SummaryWorker
 from .transcribe import TranscribeQueue
 
 log = logging.getLogger(__name__)
@@ -55,12 +56,19 @@ def _format_item_summary(item) -> str:
 class BrainDumpBot:
     """Pyrofork bot wrapping BrainDump."""
 
-    def __init__(self, config: Config, brain: BrainDump, transcribe_queue: TranscribeQueue | None = None):
+    def __init__(
+        self,
+        config: Config,
+        brain: BrainDump,
+        transcribe_queue: TranscribeQueue | None = None,
+        summary_worker: SummaryWorker | None = None,
+    ):
         if config.telegram is None:
             raise RuntimeError("telegram config missing")
         self.config = config
         self.brain = brain
         self.transcribe_queue = transcribe_queue
+        self.summary_worker = summary_worker
         self.allowed = set(config.telegram.allowed_users)
 
         self.client = Client(
@@ -186,6 +194,10 @@ class BrainDumpBot:
 
     # ---------- per-type handlers ----------
 
+    def _enqueue_summary(self, item_id: str) -> None:
+        if self.summary_worker is not None:
+            self.summary_worker.enqueue(item_id)
+
     async def _handle_text(self, message: Message) -> None:
         text = (message.text or message.caption or "").strip()
         if not text:
@@ -199,6 +211,7 @@ class BrainDumpBot:
             bookmark_url=url,
             telegram_message_id=message.id,
         )
+        self._enqueue_summary(item.id)
         await message.reply_text(f"✅ 已保存 ({item.id[:15]}…)")
 
     async def _handle_photo(self, message: Message) -> None:
@@ -216,6 +229,8 @@ class BrainDumpBot:
                 image_paths=[Path(file_path)],
                 telegram_message_id=message.id,
             )
+            if caption:
+                self._enqueue_summary(item.id)
             await message.reply_text(f"📷 已保存 ({item.id[:15]}…)")
 
     async def _handle_voice(self, message: Message) -> None:

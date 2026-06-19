@@ -44,9 +44,16 @@ class UpdateItemRequest(BaseModel):
     type: str | None = None
 
 
-def create_app(config: Config, brain: BrainDump | None = None) -> FastAPI:
+def create_app(
+    config: Config,
+    brain: BrainDump | None = None,
+    summary_worker=None,
+) -> FastAPI:
     """Build the FastAPI app. If brain is provided, reuse it (shared with serve mode);
-    otherwise create one and manage its lifetime."""
+    otherwise create one and manage its lifetime.
+
+    summary_worker (optional) — items created via POST /api/items will be enqueued.
+    """
 
     own_brain = brain is None
     if brain is None:
@@ -111,6 +118,8 @@ def create_app(config: Config, brain: BrainDump | None = None) -> FastAPI:
             bookmark_url=req.bookmark_url,
             tags=req.tags,
         )
+        if summary_worker is not None and item.content.strip():
+            summary_worker.enqueue(item.id)
         return _item_to_dict(item)
 
     @app.patch("/api/items/{item_id}")
