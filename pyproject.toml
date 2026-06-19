@@ -1,10 +1,28 @@
 [project]
 name = "braindump"
 version = "2.0.0"
-description = "Personal dump tool — Telegram bot + Web UI for capturing thoughts, voice, images, links"
+description = "Personal dump tool — voice-first, AI-native, agent-ready. Telegram Bot + Web UI + CLI for capturing thoughts, voice, images, links."
 readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
-authors = [{ name = "apecode", email = "me@apecode.ai" }]
+authors = [{ name = "ApeCodeAI contributors", email = "me@apecode.ai" }]
+keywords = ["braindump", "notes", "second-brain", "telegram-bot", "whisper", "ai", "agent", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Communications :: Chat",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.urls]
+Homepage = "https://github.com/ApeCodeAI/braindump"
+Repository = "https://github.com/ApeCodeAI/braindump"
+Issues = "https://github.com/ApeCodeAI/braindump/issues"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",

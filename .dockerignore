@@ -1,0 +1,34 @@
+.git
+.gitignore
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+.DS_Store
+.vscode
+.idea
+.claude
+
+# Don't ship the user's local data into the image
+~/braindump-data
+*.session
+*.session-journal
+braindump.db
+
+# Frontend artefacts (built inside the image)
+frontend/node_modules
+frontend/dist
+
+# Docs/CI that don't need to be in the image
+docs
+tests
+.github
+*.md
+!README.md
+
+# Local working files
+TASK.md
+REVIEW.md

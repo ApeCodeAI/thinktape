@@ -1,0 +1,34 @@
+# braindump — one-command startup
+#
+# Usage:
+#   1. Create your data dir + config:
+#        mkdir -p ~/braindump-data
+#        cp config.example.toml ~/braindump-data/config.toml
+#        # edit ~/braindump-data/config.toml with your Telegram credentials
+#   2. (Optional) export MOONSHOT_API_KEY for AI summarization
+#   3. docker compose up -d
+
+services:
+  braindump:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/apecodeai/braindump:latest
+    container_name: braindump
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      BRAINDUMP_DATA_DIR: /data
+      # Optional: AI summarization (Kimi / OpenAI-compatible)
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # Your raw items + config + sqlite index + bot session.
+      # Override with: BRAINDUMP_DATA_DIR=/abs/path docker compose up -d
+      - ${BRAINDUMP_DATA_DIR:-${HOME}/braindump-data}:/data
+      # Persist whisper model cache so it's not re-downloaded on each rebuild
+      - braindump-models:/root/.cache/huggingface
+
+volumes:
+  braindump-models:
