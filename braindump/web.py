@@ -109,6 +109,28 @@ def create_app(
             raise HTTPException(status_code=404, detail="item not found")
         return _item_to_dict(item)
 
+    @app.get("/api/items/{item_id}/links")
+    async def item_links(item_id: str):
+        item = await brain.get(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="item not found")
+        outgoing = await brain.get_links(item_id)
+        backlinks = await brain.get_backlinks(item_id)
+        return {"outgoing": outgoing, "backlinks": backlinks}
+
+    @app.get("/api/concepts")
+    async def list_concepts():
+        return {"concepts": await brain.all_concepts()}
+
+    @app.get("/api/concepts/{name}")
+    async def concept_detail(name: str):
+        items = await brain.get_concept_items(name)
+        return {
+            "concept": name,
+            "items": [_item_to_dict(i) for i in items],
+            "total": len(items),
+        }
+
     @app.post("/api/items")
     async def create_item(req: CreateItemRequest):
         item = await brain.add(

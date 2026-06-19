@@ -213,3 +213,13 @@ textarea {
 .warm-pulse {
   animation: warm-pulse 1.4s ease-in-out infinite;
 }
+
+/* Wikilink jump flash — highlights the targeted card briefly. */
+@keyframes link-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(155, 91, 50, 0.0); }
+  10%  { box-shadow: 0 0 0 4px rgba(155, 91, 50, 0.32); }
+  100% { box-shadow: 0 0 0 0 rgba(155, 91, 50, 0); }
+}
+.link-flash > article {
+  animation: link-flash 1.4s ease-out;
+}

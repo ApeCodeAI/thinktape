@@ -527,6 +527,162 @@ def delete(ctx: click.Context, item_id: str, force: bool):
     _print_json({"deleted": item_id, "hard": force})
 
 
+# ============================== links / concepts ==============================
+
+
+@cli.command(name="links")
+@click.argument("item_id")
+@click.option("--human", is_flag=True)
+@click.pass_context
+def links_cmd(ctx: click.Context, item_id: str, human: bool):
+    """Show outgoing links and backlinks for an item."""
+
+    async def run(brain: BrainDump):
+        existing = await brain.get(item_id)
+        if existing is None:
+            return None
+        outgoing = await brain.get_links(item_id)
+        backlinks = await brain.get_backlinks(item_id)
+        return {"outgoing": outgoing, "backlinks": backlinks}
+
+    result = _run(run, ctx)
+    if result is None:
+        _print_err(f"item not found: {item_id}", code="NOT_FOUND")
+        sys.exit(1)
+    if human:
+        out = result["outgoing"]
+        bl = result["backlinks"]
+        if not out and not bl:
+            click.echo("(no links)")
+            return
+        for link in out:
+            if link["type"] == "concept":
+                n = link.get("match_count", len(link.get("matches", [])))
+                click.echo(f"  → [[{link['target']}]] ({n} matches)")
+            else:
+                tgt = link.get("item")
+                if tgt:
+                    snippet = (tgt["content"] or "").strip().replace("\n", " ")[:60]
+                    click.echo(f"  → [[{link['target']}]] 直接关联  {snippet}")
+                else:
+                    click.echo(f"  → [[{link['target']}]] (item missing)")
+        for b in bl:
+            snippet = (b["content"] or "").strip().replace("\n", " ")[:60]
+            click.echo(f"  ← {b['id']} 提到了 [[{b['link_text']}]]  {snippet}")
+    else:
+        _print_json(result)
+
+
+@cli.command(name="concepts")
+@click.option("--human", is_flag=True)
+@click.pass_context
+def concepts_cmd(ctx: click.Context, human: bool):
+    """List all concepts used in [[]], with usage counts."""
+
+    async def run(brain: BrainDump):
+        return await brain.all_concepts()
+
+    concepts = _run(run, ctx)
+    if human:
+        if not concepts:
+            click.echo("(no concepts)")
+            return
+        for c in concepts:
+            click.echo(f"  [[{c['name']}]]  {c['count']}")
+    else:
+        _print_json({"concepts": concepts})
+
+
+@cli.command(name="concept")
+@click.argument("name")
+@click.option("--human", is_flag=True)
+@click.pass_context
+def concept_cmd(ctx: click.Context, name: str, human: bool):
+    """Find items referencing a concept (by [[concept]] or text match)."""
+
+    async def run(brain: BrainDump):
+        return await brain.get_concept_items(name)
+
+    items = _run(run, ctx)
+    if human:
+        if not items:
+            click.echo(f"(no items mention “{name}”)")
+            return
+        for it in items:
+            click.echo(_human_item_line(it))
+    else:
+        _print_json({"concept": name, "items": [_item_to_dict(i) for i in items], "total": len(items)})
+
+
+# ============================== review ==============================
+
+
+@cli.command(name="review")
+@click.option("--today", "review_today", is_flag=True, help="Show today's digest.")
+@click.option("--weekly", is_flag=True, help="Show this week's themes.")
+@click.option("--random", "random_n", type=int, default=None,
+              help="Show N random old items (Flomo-style recall).")
+@click.option("--min-age-days", type=int, default=7, show_default=True,
+              help="With --random: only items older than N days.")
+@click.option("--llm/--no-llm", default=False, help="Use LLM for theme analysis.")
+@click.option("--human", is_flag=True)
+@click.pass_context
+def review_cmd(
+    ctx: click.Context,
+    review_today: bool,
+    weekly: bool,
+    random_n: int | None,
+    min_age_days: int,
+    llm: bool,
+    human: bool,
+):
+    """Generate review digests (today / weekly / random)."""
+    config = ctx.obj["config"]
+    from .review import ReviewEngine
+
+    if not (review_today or weekly or random_n is not None):
+        review_today = True
+
+    async def run(brain: BrainDump):
+        engine = ReviewEngine(brain, config)
+        out: dict[str, Any] = {}
+        if review_today:
+            out["today"] = await engine.daily_digest(use_llm=llm)
+        if weekly:
+            out["weekly"] = await engine.weekly_digest(use_llm=llm)
+        if random_n is not None:
+            out["random"] = await engine.random_recall(count=random_n, min_age_days=min_age_days)
+        return out
+
+    result = _run(run, ctx)
+    if human:
+        if "today" in result:
+            d = result["today"]
+            click.echo(f"📅 今日 ({d.get('date')})  {d.get('count', 0)} 条")
+            if d.get("theme"):
+                click.echo(f"   主题: {d['theme']}")
+            if d.get("active_concepts"):
+                click.echo("   概念: " + ", ".join(f"[[{c['name']}]] ×{c['count']}"
+                                                  for c in d["active_concepts"][:5]))
+            for it in d.get("items", [])[:10]:
+                click.echo(_human_item_line(Item(**it)) if isinstance(it, dict) else _human_item_line(it))
+        if "weekly" in result:
+            w = result["weekly"]
+            click.echo(f"\n📆 最近 7 天  {w.get('count', 0)} 条")
+            if w.get("theme"):
+                click.echo(f"   主题: {w['theme']}")
+            if w.get("top_concepts"):
+                click.echo("   高频概念: " + ", ".join(
+                    f"[[{c['name']}]] ×{c['count']}" for c in w["top_concepts"][:5]))
+        if "random" in result:
+            r = result["random"]
+            click.echo(f"\n🎲 随机回顾  {len(r.get('items', []))} 条")
+            for it in r.get("items", []):
+                click.echo(_human_item_line(Item(**it)) if isinstance(it, dict) else _human_item_line(it))
+    else:
+        _print_json(result)
+
+
 # ============================== summarize ==============================
 
 

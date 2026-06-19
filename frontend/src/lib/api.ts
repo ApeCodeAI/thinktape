@@ -44,6 +44,62 @@ export interface CreateItemPayload {
   bookmark_url?: string | null;
 }
 
+export interface ConceptMatch {
+  id: string;
+  snippet: string;
+  type: string;
+  created_at: string;
+}
+
+export interface OutgoingConceptLink {
+  type: "concept";
+  target: string;
+  matches: ConceptMatch[];
+  match_count: number;
+}
+
+export interface OutgoingItemLink {
+  type: "item";
+  target: string;
+  item?: {
+    id: string;
+    type: string;
+    created_at: string;
+    content: string;
+    tags: string[];
+  };
+}
+
+export type OutgoingLink = OutgoingConceptLink | OutgoingItemLink;
+
+export interface Backlink {
+  id: string;
+  content: string;
+  link_text: string;
+  via: "item" | "concept";
+  created_at: string;
+}
+
+export interface ItemLinksResponse {
+  outgoing: OutgoingLink[];
+  backlinks: Backlink[];
+}
+
+export interface Concept {
+  name: string;
+  count: number;
+}
+
+export interface ConceptsResponse {
+  concepts: Concept[];
+}
+
+export interface ConceptDetailResponse {
+  concept: string;
+  items: Item[];
+  total: number;
+}
+
 const BASE = "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -77,6 +133,10 @@ export const api = {
     request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
   stats: () => request<Stats>(`/api/stats`),
   tags: () => request<{ tags: string[] }>(`/api/tags`),
+  links: (id: string) => request<ItemLinksResponse>(`/api/items/${id}/links`),
+  concepts: () => request<ConceptsResponse>(`/api/concepts`),
+  concept: (name: string) =>
+    request<ConceptDetailResponse>(`/api/concepts/${encodeURIComponent(name)}`),
 
   audioUrl: (id: string) => `/api/items/${id}/audio`,
   videoUrl: (id: string) => `/api/items/${id}/video`,

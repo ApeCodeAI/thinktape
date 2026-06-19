@@ -8,6 +8,7 @@ from typing import Iterable
 
 import aiosqlite
 
+from .links import extract_links
 from .models import Item, Stats
 
 _TZ_CST = timezone(timedelta(hours=8))
@@ -42,6 +43,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
     bookmark_url,
     tokenize = 'unicode61 remove_diacritics 2'
 );
+
+CREATE TABLE IF NOT EXISTS links (
+    source_id   TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    PRIMARY KEY (source_id, target)
+);
+CREATE INDEX IF NOT EXISTS idx_links_target ON links(target);
+CREATE INDEX IF NOT EXISTS idx_links_target_type ON links(target_type);
 """
 
 
@@ -135,12 +145,70 @@ class IndexDB:
             "INSERT INTO items_fts(id, content, tags, bookmark_url) VALUES(?, ?, ?, ?)",
             (item.id, item.content, " ".join(item.tags), item.bookmark_url or ""),
         )
+        await self._refresh_links(item.id, item.content)
         await self.db.commit()
 
     async def delete(self, item_id: str) -> None:
         await self.db.execute("DELETE FROM items WHERE id = ?", (item_id,))
         await self.db.execute("DELETE FROM items_fts WHERE id = ?", (item_id,))
+        await self.db.execute("DELETE FROM links WHERE source_id = ?", (item_id,))
         await self.db.commit()
+
+    # ---------- links ----------
+
+    async def _refresh_links(self, item_id: str, content: str) -> None:
+        await self.db.execute("DELETE FROM links WHERE source_id = ?", (item_id,))
+        for link in extract_links(content):
+            await self.db.execute(
+                "INSERT OR IGNORE INTO links(source_id, target, target_type) VALUES(?, ?, ?)",
+                (item_id, link["target"], link["type"]),
+            )
+
+    async def get_outgoing_links(self, item_id: str) -> list[dict[str, str]]:
+        async with self.db.execute(
+            "SELECT target, target_type FROM links WHERE source_id = ? ORDER BY target",
+            (item_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [{"type": r["target_type"], "target": r["target"]} for r in rows]
+
+    async def get_backlinks(self, item_id: str) -> list[str]:
+        """Items that link to this item by id (target_type='item')."""
+        async with self.db.execute(
+            """
+            SELECT DISTINCT source_id FROM links
+            WHERE target = ? AND target_type = 'item' AND source_id != ?
+            """,
+            (item_id, item_id),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r["source_id"] for r in rows]
+
+    async def get_concept_references(self, concept: str) -> list[str]:
+        """Items that contain [[concept]] in their content."""
+        async with self.db.execute(
+            """
+            SELECT DISTINCT source_id FROM links
+            WHERE target = ? AND target_type = 'concept'
+            """,
+            (concept,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r["source_id"] for r in rows]
+
+    async def get_all_concepts(self) -> list[dict]:
+        """All unique concepts referenced in [[]], with usage counts."""
+        async with self.db.execute(
+            """
+            SELECT target AS name, COUNT(DISTINCT source_id) AS count
+            FROM links
+            WHERE target_type = 'concept'
+            GROUP BY target
+            ORDER BY count DESC, target ASC
+            """
+        ) as cur:
+            rows = await cur.fetchall()
+        return [{"name": r["name"], "count": r["count"]} for r in rows]
 
     # ---------- queries ----------
 
@@ -263,6 +331,7 @@ class IndexDB:
     async def rebuild(self, items: Iterable[Item]) -> int:
         await self.db.execute("DELETE FROM items")
         await self.db.execute("DELETE FROM items_fts")
+        await self.db.execute("DELETE FROM links")
         await self.db.commit()
         n = 0
         for item in items:

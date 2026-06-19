@@ -1,19 +1,21 @@
 import { Check, MoreHorizontal, Pencil, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { api, type Item } from "@/lib/api";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { AudioPlayer } from "./AudioPlayer";
+import { Backlinks } from "./Backlinks";
 import { BookmarkCard } from "./BookmarkCard";
 import { ImageGrid } from "./ImageGrid";
+import { Markdown } from "./Markdown";
 
 interface Props {
   item: Item;
   onUpdate: (i: Item) => void;
   onDelete: (id: string) => void;
   onTagClick: (tag: string) => void;
+  onConceptClick?: (name: string) => void;
+  onItemLinkClick?: (id: string) => void;
 }
 
 const TYPE_LABEL: Record<string, { label: string; mark: string }> = {
@@ -22,7 +24,14 @@ const TYPE_LABEL: Record<string, { label: string; mark: string }> = {
   note: { label: "笔记", mark: "§" },
 };
 
-export function ItemCard({ item, onUpdate, onDelete, onTagClick }: Props) {
+export function ItemCard({
+  item,
+  onUpdate,
+  onDelete,
+  onTagClick,
+  onConceptClick,
+  onItemLinkClick,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
   const [tagInput, setTagInput] = useState(item.tags.join(", "));
@@ -292,7 +301,17 @@ export function ItemCard({ item, onUpdate, onDelete, onTagClick }: Props) {
               )}
               title="双击编辑"
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{bodyContent}</ReactMarkdown>
+              <Markdown
+                onWikilinkClick={(target, kind) => {
+                  if (kind === "item") {
+                    onItemLinkClick?.(target);
+                  } else {
+                    onConceptClick?.(target);
+                  }
+                }}
+              >
+                {bodyContent}
+              </Markdown>
             </div>
           )
         )}
@@ -312,6 +331,15 @@ export function ItemCard({ item, onUpdate, onDelete, onTagClick }: Props) {
           />
         )}
       </div>
+
+      {/* Links + backlinks */}
+      {!editing && !transcribing && (
+        <Backlinks
+          itemId={item.id}
+          onItemClick={(id) => onItemLinkClick?.(id)}
+          onConceptClick={(name) => onConceptClick?.(name)}
+        />
+      )}
 
       {/* Tags */}
       {(item.tags.length > 0 || editingTags) && (
