@@ -1,18 +1,21 @@
 ---
 name: braindump
 description: >-
-  Personal dump tool — record thoughts, bookmarks, voice memos via CLI.
+  Voice & Video First personal dump tool — record thoughts, voice memos, videos, bookmarks via CLI.
   Use when: (1) user asks to remember/record/dump something,
   (2) a discussion produces insights worth preserving,
   (3) user says "记一下", "dump this", "save this thought",
   (4) you want to proactively save valuable context for the user.
   AI-first CLI: default JSON output, pipe-friendly, stdin support.
+  Supports [[wikilinks]] for bi-directional linking between items.
 ---
 
-# braindump — Personal Dump CLI
+# braindump — Voice & Video First Personal Dump
 
-braindump is the user's personal raw-material library. Use it to record thoughts,
-bookmarks, voice memos, and any content the user wants to preserve.
+braindump is the user's Voice & Video First personal raw-material library.
+Voice and video are the primary input — local Whisper auto-transcribes.
+Original media files are preserved forever (content.md is the transcript, audio/video is the truth).
+Supports [[wikilinks]] for bi-directional linking between items.
 
 **When to use this skill:**
 - User explicitly asks to record/remember something

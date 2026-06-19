@@ -2,7 +2,7 @@
 
 # braindump 🧠
 
-> AI 时代的个人原材料库 — voice-first, AI-native, agent-ready
+> Voice & Video First 的个人原材料库 — AI-native, Agent-ready, Open Source
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
@@ -10,7 +10,7 @@
 
 </div>
 
-**braindump** 是一个开源的个人 dump 工具。通过 Telegram Bot、Web UI 或 CLI 随手记录想法、语音、图片、链接，AI 自动转写和摘要，任何 Agent 都可以通过 CLI 直接调用。
+**braindump** 是一个 Voice & Video First 的开源个人原材料库。语音和视频是第一输入方式——走路、开车、散步时随手说，本地 Whisper 自动转写。文字、图片、链接也支持。AI 自动摘要，任何 Agent 通过 CLI 直接调用。
 
 [中文](#中文) · [English](#english)
 
@@ -24,9 +24,10 @@
 
 不是"另一个笔记工具"。braindump 解决的问题是：
 
-- 🎙️ **Voice-first** — 走路、开车、散步时的灵感，语音 dump，本地 Whisper 自动转写
+- 🎙️ **Voice & Video First** — 语音和视频是第一输入方式。走路、开车、散步时随手说，本地 Whisper 自动转写。原始音视频永久保留，content.md 是转写产物，媒体文件是真相
 - 🤖 **AI-native** — 数据格式是 YAML + Markdown，AI 直接读；Agent 通过 CLI 直接调用
-- 🔒 **Data ownership** — 每条记录是一个本地文件夹，你完全拥有数据
+- 🔗 **[[双链]]** — 支持 Obsidian 风格的 `[[wikilink]]`，在碎片之间建立关联
+- 🔒 **Local File First** — 每条记录是一个本地文件夹，你完全拥有数据，可直接嵌入 Obsidian vault
 - 🧩 **Agent-ready** — 不只是你往里 dump，你的 AI 助手也能帮你沉淀知识
 - ♻️ **数据永久保留，代码随时可换** — 文件即真相，SQLite 只是索引，可随时重建
 
@@ -34,11 +35,11 @@
 
 |                    | braindump          | Flomo     | Apple Notes | Obsidian    |
 | ------------------ | ------------------ | --------- | ----------- | ----------- |
-| 语音转写            | ✅ 本地 Whisper      | ❌        | ❌           | ❌          |
+| 语音/视频转写        | ✅ 本地 Whisper      | ❌        | ❌           | ❌          |
 | AI 摘要             | ✅                  | ❌        | ❌           | (插件)       |
+| [[双链]]           | ✅ Obsidian 兼容    | ❌        | ❌           | ✅          |
 | Agent 可调用 (CLI)  | ✅                  | ❌        | ❌           | ❌          |
-| 自部署              | ✅                  | ❌        | ❌           | ✅          |
-| 数据格式            | YAML + Markdown    | 私有 DB   | 私有         | Markdown    |
+| Local File First   | ✅ YAML + Markdown  | 私有 DB   | 私有         | ✅ Markdown |
 | 开源                | ✅ Apache 2.0       | ❌        | ❌           | ❌          |
 
 ### Quick Start
@@ -200,9 +201,10 @@ uv run pytest tests/ -v
 
 This is not yet another note-taking app. braindump exists for a different reason:
 
-- **Voice-first** — capture ideas while walking, driving, or cooking; local Whisper transcribes them.
+- **Voice & Video First** — voice and video are the primary input. Capture ideas while walking, driving, or cooking; local Whisper transcribes automatically. Original media files preserved forever.
 - **AI-native** — data is stored as YAML + Markdown files. AI can read it directly. Agents call the CLI directly.
-- **Data ownership** — every item is a self-contained folder on your disk. Nothing is locked behind a vendor.
+- **[[Bi-directional Links]]** — Obsidian-style `[[wikilinks]]` to connect fragments into a knowledge graph.
+- **Local File First** — every item is a self-contained folder on your disk. Can be embedded into an Obsidian vault.
 - **Agent-ready** — your AI assistants can dump into your second brain, not just you.
 - **Forever data, replaceable code** — files are the source of truth, SQLite is a rebuildable index.
 

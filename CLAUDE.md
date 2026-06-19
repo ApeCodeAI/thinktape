@@ -2,9 +2,11 @@
 
 ## 项目概述
 
-braindump 是一个个人原材料库（Personal Dump）。用户通过 Telegram Bot 随手记录想法、语音、图片、链接，系统自动转写和索引，Web UI 提供美观的浏览体验。
+braindump 是一个 **Voice & Video First** 的个人原材料库。AI-native, Agent-ready, 开源。
 
-**核心原则：数据永久保留，代码随时可换。**
+语音和视频是第一输入方式，文字是次要的。用户通过 Telegram Bot、Web UI 或 CLI 随手 dump 语音、视频、图片、文字、链接，AI 自动转写和摘要，任何 Agent 都可以通过 CLI 直接调用。
+
+**核心原则：数据永久保留，代码随时可换。原始媒体文件是真相，content.md 是转写产物。**
 
 ## 必读
 
