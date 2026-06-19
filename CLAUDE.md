@@ -1,63 +1,91 @@
-# braindump — Claude 协作指引
+# CLAUDE.md — braindump v2
 
-> 个人表达原材料库。文件即真相 + SQLite 索引；Telegram + CLI 入，Web / AI 取。
->
-> **定位 / 当前阶段 / 路线 / 已决议事项**全部在 second-brain：
-> `~/work/second-brain/projects/braindump/`（`index.md` / `_ai-context.md` / `discussions/`）
-> 跨工具决策流水：`~/work/second-brain/_ai/memory/daily/<YYYY-MM-DD>.md`
+## 项目概述
 
-## 不变量
+braindump 是一个个人原材料库（Personal Dump）。用户通过 Telegram Bot 随手记录想法、语音、图片、链接，系统自动转写和索引，Web UI 提供美观的浏览体验。
 
-1. **文件即真相，DB 是索引**：原始文件按 `~/braindump-data/media/<type>/YYYY/MM/DD/` 存；SQLite 任何时候都能从文件 + `.md` frontmatter 重建（`rebuild-index`）。
-2. **三个目录 / 字段不能动**：`media/` 原始文件、`transcripts/` 转写文本、`.md` 已落 frontmatter 字段名（`created / source / type / tags / title / summary / mood`）。改字段名 = 破坏向后兼容。
-3. **Secrets 不入 `config.toml`**：API Key、Bot Token 只通过环境变量；config 里存的是变量名。
-4. **Schema 改动 = migration**：在 `migrations/` 加新文件，并验证 `rebuild-index` 仍能从文件恢复出新 schema。
-5. **前端改后必须 `cd frontend && npm run build`**，否则 `frontend/dist/` 缺失 → 404。
-6. **CLI 命令必须有 `--json`**，退出码语义化（`0` = ok，非 `0` = 失败）。
-7. **CLI 输出格式用 `emit()` 统一**（`braindump/cli.py`）：默认人类可读，`--json` 走机器路径。
+**核心原则：数据永久保留，代码随时可换。**
 
-## 跑、测、构建
+## 必读
 
-```bash
-# 后端 dev
-uv sync
-uv run python -m braindump web      # 仅 Web (http://localhost:8080)
-uv run python -m braindump serve    # 全部（Bot + Web + 转写 + 摘要 + Review）
+- `DESIGN.md` — 完整设计规范，包含数据结构、API、架构、UI 设计
 
-# CLI 试一下
-uv run python -m braindump init --json
-uv run python -m braindump add "测试一下 CLI #test" --json
-uv run python -m braindump list --limit 5 --json
+## 技术栈
 
-# 前端 dev
-cd frontend && npm install && npm run dev   # http://localhost:5173（代理 API → :8080）
+- Python 3.12+, uv 包管理
+- FastAPI + aiosqlite
+- Pyrofork (Telegram MTProto)
+- faster-whisper (语音转写)
+- React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui
 
-# 测试（绕开真实 Telegram + 前端 E2E）
-uv run python -m pytest tests/ -q \
-  --ignore=tests/test_web_e2e.py \
-  --ignore=tests/test_frontend_e2e.py \
-  --ignore=tests/test_telegram_bot.py
+## 项目结构
 
-# 前端构建（部署 / 完整 E2E 前必跑）
-cd frontend && npm run build
+```
+braindump/
+  __init__.py
+  core.py          # BrainDump 类 — 核心业务逻辑
+  store.py         # ItemStore — 文件读写 (items/)
+  index.py         # IndexDB — SQLite 索引
+  bot.py           # Telegram Bot
+  transcribe.py    # 语音转写
+  web.py           # FastAPI server + API routes
+  config.py        # 配置加载
+  cli.py           # CLI 入口 (serve/web/rebuild-index)
+  models.py        # Pydantic models
+frontend/
+  src/
+    App.tsx
+    components/
+    ...
+  package.json
+  vite.config.ts
+tests/
+  test_store.py
+  test_index.py
+  test_api.py
+pyproject.toml
+config.example.toml
+DESIGN.md
 ```
 
-> `tests/test_telegram_bot.py::test_get_updates` 真实访问 Telegram API，本机经 `127.0.0.1:7890` 代理 SSL 握手超时是已知现象，本地验证排除即可。
+## 开发规则
 
-## AI 操作流程
+1. **先读 DESIGN.md**，严格按照数据结构和 API 规范实现
+2. **uv 管理依赖**：`uv add <package>`, `uv run pytest`
+3. **前端在 frontend/ 目录**：`cd frontend && npm install && npm run build`
+4. **构建后的前端放在 frontend/dist/**，FastAPI 通过 StaticFiles 服务
+5. **测试**：`uv run pytest tests/ -v`
+6. **不要修改 DESIGN.md**
+7. **Git**: user.name=apecode, user.email=me@apecode.ai
 
-- **复杂任务**：用 `braindump-dev` Skill（worktree → TASK.md → Claude Code PTY → 测试 → review → 合并）。
-- **简单改动**：直接 edit + 跑相关 pytest 即可。
-- **"盯着"任务**：定期读 PTY 日志并主动汇报，不要空泛说"在跑"。
-- **新增 CLI 命令**：默认人类输出 + 加 `--json` 走 AI 路径，复用 `emit()`；命令必须能被 `rebuild-index` 反向恢复。
-- **AI 调用 braindump**：优先 `braindump <cmd> --json`，**不要**直连 SQLite 或绕过 CLI 写 `media/`。
+## 配置
 
-## 仓库结构
+运行时配置在 `~/braindump-data/config.toml`（不在仓库内）。
+仓库内放 `config.example.toml` 作为参考。
 
-- `braindump/` — 后端 Python 包
-- `frontend/` — React 19 + Vite + Tailwind v4 + shadcn/ui
-- `migrations/` — SQLite schema 迁移
-- `tests/` — pytest
-- `DESIGN.md` / `DESIGN-v0.2.md` / `DESIGN-v0.3.md` — 历史 / 当前设计文档
-- `config.example.toml` — 配置模板
-- 数据目录（不入仓库）：`~/braindump-data/`
+## 运行
+
+```bash
+uv run braindump serve    # 启动全部 (bot + web + transcriber)
+uv run braindump web      # 只启动 web
+uv run braindump rebuild-index  # 从 items/ 重建 SQLite 索引
+```
+
+## Web UI 设计要求
+
+- Flomo 风格的卡片流，暖色调，干净简洁
+- shadcn/ui 组件库
+- Markdown 渲染（支持代码块、链接、列表等）
+- 内嵌音频播放器
+- 图片缩略图 + 点击放大
+- 搜索 + 类型筛选 + 标签筛选
+- 无限滚动加载
+- 响应式设计（桌面 + 手机）
+- 中文界面
+
+## 注意事项
+
+- Pyrofork 不是 Pyrogram，import 是 `from pyrogram import ...` 但包名是 `pyrofork`
+- faster-whisper 在 macOS x86_64 需要 `onnxruntime<1.24`
+- config.toml 不在仓库内，通过 BRAINDUMP_DATA_DIR 环境变量或默认 ~/braindump-data/ 找到
+- 前端必须 `npm run build` 生成 dist/，FastAPI 服务 dist/ 静态文件

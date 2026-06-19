@@ -1,40 +1,47 @@
 [project]
 name = "braindump"
-version = "0.2.0"
-description = "Personal expression material library — dump your brain via Telegram, browse via Web UI"
+version = "2.0.0"
+description = "Personal dump tool — Telegram bot + Web UI for capturing thoughts, voice, images, links"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
+authors = [{ name = "apecode", email = "me@apecode.ai" }]
 dependencies = [
-    "fastapi>=0.100",
-    "uvicorn[standard]>=0.20",
-    "aiosqlite>=0.19",
-    "jinja2>=3.1",
-    "python-multipart>=0.0.6",
-    "tomli>=2.0; python_version < '3.11'",
-    "beautifulsoup4>=4.12",
-    "pyrofork>=2.3.69",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "aiosqlite>=0.20.0",
+    "pyrofork>=2.3.45",
     "tgcrypto>=1.2.5",
-    "faster-whisper>=1.2.1",
-    "onnxruntime<1.24",
-    "openai>=2.26.0",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.2",
+    "pydantic>=2.9.0",
+    "python-multipart>=0.0.12",
+    "tomli>=2.0.1; python_version < '3.11'",
+    "click>=8.1.7",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]
-bot = ["pyrofork>=2.3", "tgcrypto>=1.2"]
-transcribe = ["funasr>=1.0"]
+transcribe = [
+    "faster-whisper>=1.0.3",
+    "onnxruntime<1.24; platform_system == 'Darwin' and platform_machine == 'x86_64'",
+]
+
+[project.scripts]
+braindump = "braindump.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[dependency-groups]
-dev = [
-    "playwright>=1.58.0",
-    "pytest>=9.0.2",
-    "pytest-asyncio>=0.23",
-    "pytest-playwright>=0.7.2",
-]
+[tool.hatch.build.targets.wheel]
+packages = ["braindump"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]

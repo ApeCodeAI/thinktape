@@ -1,18 +1,30 @@
+# Python
 __pycache__/
 *.pyc
 .venv/
 *.egg-info/
 dist/
-build/
-braindump-data/
-test-data/
-*.db
-.env
-.env.local
-*.session
-*.session-journal
-/tmp/
+
+# uv
+uv.lock
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Test
 .pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+
+# Temp
 TASK.md
 REVIEW.md
-data/
+*.session

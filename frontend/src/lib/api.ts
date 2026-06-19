@@ -1,68 +1,74 @@
-import type { NotesResponse, Note, Stats, CalendarData, TagInfo } from '@/types'
+export interface Item {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  type: "thought" | "bookmark" | "note";
+  source: string;
+  status: "active" | "archived" | "deleted";
+  tags: string[];
+  bookmark_url: string | null;
+  summary: string | null;
+  has_audio: boolean;
+  has_images: boolean;
+  has_video: boolean;
+  content: string;
+  images: string[];
+}
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`)
+export interface ListResponse {
+  items: Item[];
+  limit: number;
+  offset: number;
+}
+
+export interface Stats {
+  total: number;
+  today: number;
+  by_type: Record<string, number>;
+  by_tag: Record<string, number>;
+}
+
+export interface ListParams {
+  type?: string;
+  tag?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+const BASE = "";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    ...init,
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`${r.status} ${r.statusText}: ${text}`);
   }
-  return res.json()
+  return r.json() as Promise<T>;
 }
 
-export async function fetchNotes(params: {
-  page?: number
-  size?: number
-  type?: string
-  tag?: string
-  q?: string
-  date?: string
-} = {}): Promise<NotesResponse> {
-  const searchParams = new URLSearchParams()
-  if (params.page) searchParams.set('page', String(params.page))
-  if (params.size) searchParams.set('size', String(params.size))
-  if (params.type) searchParams.set('type', params.type)
-  if (params.tag) searchParams.set('tag', params.tag)
-  if (params.q) searchParams.set('q', params.q)
-  if (params.date) searchParams.set('date', params.date)
-  return request<NotesResponse>(`/api/notes?${searchParams}`)
-}
+export const api = {
+  list: async (params: ListParams = {}): Promise<ListResponse> => {
+    const qs = new URLSearchParams();
+    if (params.type) qs.set("type", params.type);
+    if (params.tag) qs.set("tag", params.tag);
+    if (params.q) qs.set("q", params.q);
+    qs.set("limit", String(params.limit ?? 30));
+    qs.set("offset", String(params.offset ?? 0));
+    return request<ListResponse>(`/api/items?${qs.toString()}`);
+  },
+  get: (id: string) => request<Item>(`/api/items/${id}`),
+  patch: (id: string, body: Partial<Item>) =>
+    request<Item>(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (id: string) =>
+    request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
+  stats: () => request<Stats>(`/api/stats`),
+  tags: () => request<{ tags: string[] }>(`/api/tags`),
 
-export async function fetchNote(id: number): Promise<Note> {
-  return request<Note>(`/api/notes/${id}`)
-}
-
-export async function createNote(data: { content: string; tags?: string }): Promise<Note> {
-  return request<Note>('/api/notes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-}
-
-export async function updateNote(id: number, data: { content?: string; tags?: string }): Promise<Note> {
-  return request<Note>(`/api/notes/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-}
-
-export async function deleteNote(id: number): Promise<void> {
-  await fetch(`/api/notes/${id}`, { method: 'DELETE' })
-}
-
-export async function restoreNote(id: number): Promise<void> {
-  await fetch(`/api/notes/${id}/restore`, { method: 'POST' })
-}
-
-export async function fetchStats(): Promise<Stats> {
-  return request<Stats>('/api/stats')
-}
-
-export async function fetchCalendar(year: number, month: number): Promise<CalendarData> {
-  return request<CalendarData>(`/api/calendar?year=${year}&month=${month}`)
-}
-
-export async function fetchTags(): Promise<TagInfo[]> {
-  const data = await request<{ tags: TagInfo[] }>('/api/tags')
-  return data.tags
-}
+  audioUrl: (id: string) => `/api/items/${id}/audio`,
+  videoUrl: (id: string) => `/api/items/${id}/video`,
+  imageUrl: (id: string, name: string) => `/api/items/${id}/images/${encodeURIComponent(name)}`,
+};

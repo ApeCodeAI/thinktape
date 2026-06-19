@@ -1,7 +1,6 @@
 [general]
 data_dir = "~/braindump-data"
 timezone = "Asia/Shanghai"
-day_boundary_hour = 4              # Content before this hour belongs to previous day
 
 [telegram]
 api_id = 12345                     # Get from https://my.telegram.org
@@ -10,27 +9,18 @@ bot_token = "your_bot_token_here"  # Get from @BotFather
 allowed_users = [123456789]        # Your Telegram user ID
 
 [transcribe]
-engine = "whisper"                 # whisper | funasr
+engine = "whisper"
 whisper_model = "small"            # tiny | base | small | medium | large-v3
 whisper_device = "cpu"             # cpu | cuda
 
 [web]
-host = "127.0.0.1"                # ⚠ If you change this to 0.0.0.0, you MUST set secret_key below
+host = "0.0.0.0"                   # 0.0.0.0 for LAN access
 port = 8080
-# secret_key = "your_secret"      # REQUIRED if exposed to a network (host != 127.0.0.1)
-
-[review]
-enabled = false
-count = 3                          # Notes per daily review
-schedule = "09:00"                 # HH:MM in user timezone (general.timezone)
-min_age_days = 7                   # Only review notes older than this
-min_content_length = 20            # Skip very short notes
-chat_id = 123456789                # Telegram user ID (defaults to allowed_users[0])
 
 [llm]
 enabled = false
 base_url = "https://api.moonshot.cn/v1"
 model = "kimi-k2.5"
-api_key_env = "MOONSHOT_API_KEY"   # Read from environment variable, NOT stored in config
+api_key_env = "MOONSHOT_API_KEY"
 timeout = 30
-min_content_length = 30            # Skip notes shorter than this
+min_content_length = 30
