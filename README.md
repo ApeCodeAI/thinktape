@@ -15,7 +15,7 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 
 **braindump** 是一个 Voice & Video First 的开源个人原材料库。语音和视频是第一输入方式——走路、开车、散步时随手说，本地 Whisper 自动转写。文字、图片、链接也支持。AI 自动摘要，任何 Agent 通过 CLI 直接调用。
 
-**braindump** is part of the [ApeCode.ai](https://apecode.ai) open source ecosystem, sponsored by [BytePass.ai](https://bytepass.ai).
+
 
 [中文](#中文) · [English](#english)
 
@@ -40,7 +40,7 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 
 |                    | braindump          | Flomo     | Apple Notes | Obsidian    |
 | ------------------ | ------------------ | --------- | ----------- | ----------- |
-| 语音/视频转写        | ✅ 本地 Whisper      | ❌        | ❌           | ❌          |
+| 语音/视频转写        | ✅ 本地 Whisper      | ✅ (付费)  | ❌           | ❌          |
 | AI 摘要             | ✅                  | ❌        | ❌           | (插件)       |
 | [[双链]]           | ✅ Obsidian 兼容    | ❌        | ❌           | ✅          |
 | Agent 可调用 (CLI)  | ✅                  | ❌        | ❌           | ❌          |
