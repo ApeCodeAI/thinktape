@@ -53,19 +53,24 @@ class Config:
 
     @property
     def db_path(self) -> Path:
-        return self.data_dir / "braindump.db"
+        return self.data_dir / "thinktape.db"
 
     @property
     def bot_session_path(self) -> Path:
         # Pyrofork wants a session name (no extension); using existing session file name.
-        return self.data_dir / "braindump_bot"
+        return self.data_dir / "thinktape_bot"
 
 
 def _resolve_data_dir() -> Path:
-    env = os.environ.get("BRAINDUMP_DATA_DIR")
+    env = os.environ.get("THINKTAPE_DATA_DIR") or os.environ.get("BRAINDUMP_DATA_DIR")
     if env:
         return Path(env).expanduser().resolve()
-    return Path("~/braindump-data").expanduser().resolve()
+    # Prefer new default; fall back to legacy path for migration.
+    new_default = Path("~/thinktape-data").expanduser().resolve()
+    old_default = Path("~/braindump-data").expanduser().resolve()
+    if old_default.exists() and not new_default.exists():
+        return old_default
+    return new_default
 
 
 def load_config(data_dir: Path | None = None) -> Config:

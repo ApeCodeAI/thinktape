@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import Config
-from .core import BrainDump
+from .core import ThinkTape
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class UpdateItemRequest(BaseModel):
 
 def create_app(
     config: Config,
-    brain: BrainDump | None = None,
+    brain: ThinkTape | None = None,
     summary_worker=None,
 ) -> FastAPI:
     """Build the FastAPI app. If brain is provided, reuse it (shared with serve mode);
@@ -57,7 +57,7 @@ def create_app(
 
     own_brain = brain is None
     if brain is None:
-        brain = BrainDump(config)
+        brain = ThinkTape(config)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -69,7 +69,7 @@ def create_app(
             if own_brain:
                 await brain.close()
 
-    app = FastAPI(title="braindump", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="thinktape", version="2.0.0", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -237,7 +237,7 @@ def create_app(
             return JSONResponse(
                 {
                     "ok": True,
-                    "message": "braindump web — frontend not built yet. Run `cd frontend && npm install && npm run build`.",
+                    "message": "thinktape web — frontend not built yet. Run `cd frontend && npm install && npm run build`.",
                 }
             )
 

@@ -12,10 +12,10 @@ export function Header({ query, onQueryChange, onConceptsClick }: Props) {
       <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-4">
         <div className="flex items-baseline gap-2 select-none">
           <h1 className="font-serif text-2xl tracking-tight text-fg leading-none">
-            braindump
+            ThinkTape
           </h1>
           <span className="font-serif italic text-sm text-meta leading-none">
-            ·&nbsp;a paper desk
+            ·&nbsp;think out loud
           </span>
         </div>
         <div className="flex-1" />

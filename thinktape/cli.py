@@ -1,4 +1,4 @@
-"""braindump CLI — AI-first command-line interface.
+"""thinktape CLI — AI-first command-line interface.
 
 Default output is JSON to stdout, errors as JSON to stderr.
 Use --human for human-readable output.
@@ -19,7 +19,7 @@ import click
 import uvicorn
 
 from .config import Config, load_config
-from .core import BrainDump
+from .core import ThinkTape
 from .models import Item
 
 _VERSION = "2.0.0"
@@ -116,7 +116,7 @@ def _human_item_detail(item: Item) -> str:
 
 
 async def _with_brain(config: Config, fn) -> Any:
-    brain = BrainDump(config)
+    brain = ThinkTape(config)
     await brain.connect()
     try:
         return await fn(brain)
@@ -197,7 +197,7 @@ def _sanitize_config(config: Config) -> dict[str, Any]:
               type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False))
 @click.pass_context
 def cli(ctx: click.Context, log_level: str):
-    """braindump — AI-first personal dump tool.
+    """thinktape — AI-first personal dump tool.
 
     Default output is JSON to stdout. Use --human for human-readable output.
     Errors go to stderr as JSON: {"error": "msg", "code": "..."}.
@@ -262,7 +262,7 @@ def add(
 
     tag_list = list(tags) + _split_tags(tags_csv)
 
-    async def run(brain: BrainDump) -> Item:
+    async def run(brain: ThinkTape) -> Item:
         return await brain.add(
             content=body,
             type=type_,
@@ -326,7 +326,7 @@ def list_cmd(
 
     status_arg: str | None = None if status.lower() == "all" else status
 
-    async def run(brain: BrainDump) -> list[Item]:
+    async def run(brain: ThinkTape) -> list[Item]:
         # Over-fetch a bit when filtering by since.
         fetch_limit = limit if since_dt is None else max(limit * 4, 200)
         items = await brain.list(type=type_, tag=tag, status=status_arg,
@@ -357,7 +357,7 @@ def list_cmd(
 @click.pass_context
 def get(ctx: click.Context, item_id: str, raw_content: bool, human: bool):
     """Get an item by id."""
-    async def run(brain: BrainDump) -> Item | None:
+    async def run(brain: ThinkTape) -> Item | None:
         return await brain.get(item_id)
 
     item = _run(run, ctx)
@@ -385,7 +385,7 @@ def get(ctx: click.Context, item_id: str, raw_content: bool, human: bool):
 @click.pass_context
 def search(ctx: click.Context, query: str, type_: str | None, limit: int, offset: int, human: bool):
     """Search items by full-text query."""
-    async def run(brain: BrainDump) -> list[Item]:
+    async def run(brain: ThinkTape) -> list[Item]:
         items = await brain.search(query, limit=limit, offset=offset)
         if type_:
             items = [i for i in items if i.type == type_]
@@ -407,7 +407,7 @@ def search(ctx: click.Context, query: str, type_: str | None, limit: int, offset
 @click.pass_context
 def stats(ctx: click.Context, human: bool):
     """Show statistics."""
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         return await brain.stats()
 
     s = _run(run, ctx)
@@ -428,7 +428,7 @@ def stats(ctx: click.Context, human: bool):
 @click.pass_context
 def tags(ctx: click.Context, human: bool):
     """List all tags."""
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         return await brain.all_tags()
 
     tag_list = _run(run, ctx)
@@ -491,7 +491,7 @@ def update(
         _print_err("no changes specified", code="NO_CHANGES")
         sys.exit(1)
 
-    async def run(brain: BrainDump) -> Item | None:
+    async def run(brain: ThinkTape) -> Item | None:
         return await brain.update(item_id, **changes)
 
     item = _run(run, ctx)
@@ -511,7 +511,7 @@ def update(
 def delete(ctx: click.Context, item_id: str, force: bool):
     """Delete an item (soft by default, --force for hard delete)."""
 
-    async def run(brain: BrainDump) -> bool:
+    async def run(brain: ThinkTape) -> bool:
         existing = await brain.get(item_id)
         if existing is None:
             return False
@@ -537,7 +537,7 @@ def delete(ctx: click.Context, item_id: str, force: bool):
 def links_cmd(ctx: click.Context, item_id: str, human: bool):
     """Show outgoing links and backlinks for an item."""
 
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         existing = await brain.get(item_id)
         if existing is None:
             return None
@@ -579,7 +579,7 @@ def links_cmd(ctx: click.Context, item_id: str, human: bool):
 def concepts_cmd(ctx: click.Context, human: bool):
     """List all concepts used in [[]], with usage counts."""
 
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         return await brain.all_concepts()
 
     concepts = _run(run, ctx)
@@ -600,7 +600,7 @@ def concepts_cmd(ctx: click.Context, human: bool):
 def concept_cmd(ctx: click.Context, name: str, human: bool):
     """Find items referencing a concept (by [[concept]] or text match)."""
 
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         return await brain.get_concept_items(name)
 
     items = _run(run, ctx)
@@ -643,7 +643,7 @@ def review_cmd(
     if not (review_today or weekly or random_n is not None):
         review_today = True
 
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         engine = ReviewEngine(brain, config)
         out: dict[str, Any] = {}
         if review_today:
@@ -702,7 +702,7 @@ def summarize(ctx: click.Context, item_id: str | None, all_items: bool, force: b
 
     from .summarize import Summarizer
 
-    async def run(brain: BrainDump):
+    async def run(brain: ThinkTape):
         summarizer = Summarizer(config.llm)
         if item_id:
             item = await brain.get(item_id)
@@ -776,7 +776,7 @@ def rebuild_index(ctx: click.Context):
     config = ctx.obj["config"]
 
     async def _run_rebuild():
-        brain = BrainDump(config)
+        brain = ThinkTape(config)
         await brain.connect()
         try:
             n = await brain.rebuild_index()
@@ -797,7 +797,7 @@ def serve(ctx: click.Context):
         click.echo("warning: telegram config missing — bot will not start", err=True)
 
     async def _run_serve():
-        brain = BrainDump(config)
+        brain = ThinkTape(config)
         await brain.connect()
 
         from .transcribe import TranscribeQueue
@@ -816,8 +816,8 @@ def serve(ctx: click.Context):
 
         bot = None
         if config.telegram is not None:
-            from .bot import BrainDumpBot
-            bot = BrainDumpBot(
+            from .bot import ThinkTapeBot
+            bot = ThinkTapeBot(
                 config, brain,
                 transcribe_queue=transcribe_queue,
                 summary_worker=summary_worker,

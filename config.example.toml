@@ -1,5 +1,5 @@
 [general]
-data_dir = "~/braindump-data"
+data_dir = "~/thinktape-data"    # backward compatible: ~/braindump-data is also detected
 timezone = "Asia/Shanghai"
 
 [telegram]

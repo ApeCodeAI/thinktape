@@ -1,8 +1,8 @@
 <div align="center">
 
-# braindump 🧠
+# ThinkTape 🎙️
 
-> Voice & Video First 的个人原材料库 — AI-native, Agent-ready, Open Source
+> Voice & Video First 的个人思维录音带 — AI-native, Agent-ready, Open Source
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
@@ -13,21 +13,21 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 
 </div>
 
-**braindump** 是一个 Voice & Video First 的开源个人原材料库。语音和视频是第一输入方式——走路、开车、散步时随手说，本地 Whisper 自动转写。文字、图片、链接也支持。AI 自动摘要，任何 Agent 通过 CLI 直接调用。
+**ThinkTape** 是一个 Voice & Video First 的开源个人思维录音带。语音和视频是第一输入方式——走路、开车、散步时随手说，本地 Whisper 自动转写。文字、图片、链接也支持。AI 自动摘要，任何 Agent 通过 CLI 直接调用。
 
 
 
 [中文](#中文) · [English](#english)
 
-<!-- ![braindump UI](docs/screenshot.png) -->
+<!-- ![ThinkTape UI](docs/screenshot.png) -->
 
 ---
 
 ## 中文
 
-### Why braindump?
+### Why ThinkTape?
 
-不是"另一个笔记工具"。braindump 解决的问题是：
+不是"另一个笔记工具"。ThinkTape 解决的问题是：
 
 - 🎙️ **Voice & Video First** — 语音和视频是第一输入方式。走路、开车、散步时随手说，本地 Whisper 自动转写。原始音视频永久保留，content.md 是转写产物，媒体文件是真相
 - 🤖 **AI-native** — 数据格式是 YAML + Markdown，AI 直接读；Agent 通过 CLI 直接调用
@@ -38,7 +38,7 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 
 ### vs Flomo / Apple Notes / Obsidian
 
-|                    | braindump          | Flomo     | Apple Notes | Obsidian    |
+|                    | ThinkTape          | Flomo     | Apple Notes | Obsidian    |
 | ------------------ | ------------------ | --------- | ----------- | ----------- |
 | 语音/视频转写        | ✅ 本地 Whisper 无限制 | ⚠️ 仅 1 分钟 | ❌           | ❌          |
 | AI 摘要             | ✅                  | ❌        | ❌           | (插件)       |
@@ -60,9 +60,9 @@ uv sync --extra transcribe
 #### 2. 配置
 
 ```bash
-mkdir -p ~/braindump-data
-cp config.example.toml ~/braindump-data/config.toml
-# 编辑 ~/braindump-data/config.toml，填入 Telegram api_id / api_hash / bot_token
+mkdir -p ~/thinktape-data
+cp config.example.toml ~/thinktape-data/config.toml
+# 编辑 ~/thinktape-data/config.toml，填入 Telegram api_id / api_hash / bot_token
 ```
 
 api_id / api_hash 在 <https://my.telegram.org> 申请；bot_token 找 [@BotFather](https://t.me/BotFather)。
@@ -76,18 +76,18 @@ cd frontend && npm install && npm run build && cd ..
 #### 4. 运行
 
 ```bash
-uv run braindump serve   # bot + web + 转写一起启动
+uv run thinktape serve   # bot + web + 转写一起启动
 ```
 
 - 🤖 给你的 Telegram Bot 发消息（文字 / 语音 / 图片 / 链接）
 - 🌐 打开 <http://localhost:8080> 浏览
-- 💻 命令行：`uv run braindump add "你的想法"`
+- 💻 命令行：`uv run thinktape add "你的想法"`
 
 #### Docker（一行启动）
 
 ```bash
-mkdir -p ~/braindump-data
-cp config.example.toml ~/braindump-data/config.toml
+mkdir -p ~/thinktape-data
+cp config.example.toml ~/thinktape-data/config.toml
 # 编辑 config.toml
 docker compose up -d
 ```
@@ -98,46 +98,46 @@ CLI 默认输出 JSON（给 Agent 解析用），加 `--human` 给人看。
 
 ```bash
 # 记录
-braindump add "今天的想法"
-braindump add --type bookmark --bookmark-url "https://..." "my notes"
-braindump add --audio voice.opus --tag "语音"
-echo "piped content" | braindump add -
-braindump add --file notes.md --tag "笔记"
+thinktape add "今天的想法"
+thinktape add --type bookmark --bookmark-url "https://..." "my notes"
+thinktape add --audio voice.opus --tag "语音"
+echo "piped content" | thinktape add -
+thinktape add --file notes.md --tag "笔记"
 
 # 检索
-braindump list --today --human
-braindump search "Agent"
-braindump get <id> --content    # 纯文本，方便 pipe 给 LLM
+thinktape list --today --human
+thinktape search "Agent"
+thinktape get <id> --content    # 纯文本，方便 pipe 给 LLM
 
 # 管理
-braindump update <id> --tag "AI"
-braindump delete <id>
-braindump stats
-braindump tags
+thinktape update <id> --tag "AI"
+thinktape delete <id>
+thinktape stats
+thinktape tags
 
 # AI 摘要
-braindump summarize <id>
-braindump summarize --all
+thinktape summarize <id>
+thinktape summarize --all
 ```
 
 完整 CLI 文档见 [skill/SKILL.md](skill/SKILL.md)。
 
 ### Agent 集成
 
-任何 AI Agent（Claude Code / Codex / 自定义 Agent）都可以通过 CLI 使用 braindump：
+任何 AI Agent（Claude Code / Codex / 自定义 Agent）都可以通过 CLI 使用 ThinkTape：
 
 ```bash
 # Agent 沉淀一次讨论的结论
-braindump add --tag "讨论" "核心观点：Agent 需要长期记忆"
+thinktape add --tag "讨论" "核心观点：Agent 需要长期记忆"
 
 # Agent 检索用户今天的想法
-braindump list --today | jq '.items[].content'
+thinktape list --today | jq '.items[].content'
 
 # Agent 搜索相关上下文
-braindump search "产品想法" | jq -r '.items[].content'
+thinktape search "产品想法" | jq -r '.items[].content'
 
 # Pipe 给 LLM 做主题归纳
-braindump search "AI" | jq -r '.items[].content' | llm "总结共同主题"
+thinktape search "AI" | jq -r '.items[].content' | llm "总结共同主题"
 ```
 
 仓库包含 `skill/SKILL.md`，支持 skill discovery 的 Agent 框架可以自动发现使用方式。
@@ -145,7 +145,7 @@ braindump search "AI" | jq -r '.items[].content' | llm "总结共同主题"
 ### 数据结构
 
 ```
-~/braindump-data/
+~/thinktape-data/
   config.toml                        # 配置
   items/                             # 所有原始数据（唯一重要的目录）
     20260619-143052-a3f8/            # 每条记录 = 一个目录
@@ -153,14 +153,14 @@ braindump search "AI" | jq -r '.items[].content' | llm "总结共同主题"
       content.md                     # 内容（Markdown）
       audio.opus                     # 语音（可选）
       images/001.jpg                 # 图片（可选）
-  braindump.db                       # SQLite 索引，可从 items/ 重建
-  braindump_bot.session              # Telegram Bot session
+  thinktape.db                       # SQLite 索引，可从 items/ 重建
+  thinktape_bot.session              # Telegram Bot session
 ```
 
 **数据永久保留，代码随时可换。** 你可以重写整个 codebase —— items/ 不会动。
 
 ```bash
-uv run braindump rebuild-index   # 从 items/ 重建 SQLite 索引
+uv run thinktape rebuild-index   # 从 items/ 重建 SQLite 索引
 ```
 
 ### 技术栈
@@ -183,7 +183,7 @@ uv run braindump rebuild-index   # 从 items/ 重建 SQLite 索引
 
 环境变量：
 
-- `BRAINDUMP_DATA_DIR` — 覆盖数据目录（默认 `~/braindump-data`）
+- `BRAINDUMP_DATA_DIR` — 覆盖数据目录（默认 `~/thinktape-data`）
 - `MOONSHOT_API_KEY` / `OPENAI_API_KEY` — LLM provider 凭证
 
 ### 测试
@@ -200,13 +200,13 @@ uv run pytest tests/ -v
 
 ## English
 
-**braindump** is a Voice & Video First open-source personal dump tool. Voice and video are the primary input — capture ideas while walking, driving, or cooking; local Whisper transcribes automatically. Text, images, and links are also supported. Any AI agent can read and write through a clean JSON CLI.
+**ThinkTape** is a Voice & Video First open-source personal think tape. Voice and video are the primary input — capture ideas while walking, driving, or cooking; local Whisper transcribes automatically. Text, images, and links are also supported. Any AI agent can read and write through a clean JSON CLI.
 
 Part of the [ApeCode.ai](https://apecode.ai) open source ecosystem, sponsored by [BytePass.ai](https://bytepass.ai).
 
 ### Why?
 
-This is not yet another note-taking app. braindump exists for a different reason:
+This is not yet another note-taking app. ThinkTape exists for a different reason:
 
 - **Voice & Video First** — voice and video are the primary input. Capture ideas while walking, driving, or cooking; local Whisper transcribes automatically. Original media files preserved forever.
 - **AI-native** — data is stored as YAML + Markdown files. AI can read it directly. Agents call the CLI directly.
@@ -224,9 +224,9 @@ cd braindump
 uv sync --extra transcribe
 
 # 2. Configure
-mkdir -p ~/braindump-data
-cp config.example.toml ~/braindump-data/config.toml
-# Edit ~/braindump-data/config.toml with Telegram credentials
+mkdir -p ~/thinktape-data
+cp config.example.toml ~/thinktape-data/config.toml
+# Edit ~/thinktape-data/config.toml with Telegram credentials
 # Get api_id/api_hash at https://my.telegram.org
 # Get bot_token from @BotFather
 
@@ -234,7 +234,7 @@ cp config.example.toml ~/braindump-data/config.toml
 cd frontend && npm install && npm run build && cd ..
 
 # 4. Run
-uv run braindump serve
+uv run thinktape serve
 ```
 
 Open <http://localhost:8080>, message your Telegram bot, or use the CLI directly.
@@ -242,8 +242,8 @@ Open <http://localhost:8080>, message your Telegram bot, or use the CLI directly
 #### Docker
 
 ```bash
-mkdir -p ~/braindump-data
-cp config.example.toml ~/braindump-data/config.toml
+mkdir -p ~/thinktape-data
+cp config.example.toml ~/thinktape-data/config.toml
 # edit config.toml
 docker compose up -d
 ```
@@ -253,19 +253,19 @@ docker compose up -d
 Default output is JSON for agents. Add `--human` for readable output.
 
 ```bash
-braindump add "your thought"
-braindump add --type bookmark --bookmark-url "https://..." "commentary"
-braindump add --audio voice.opus --tag voice
-echo "piped" | braindump add -
+thinktape add "your thought"
+thinktape add --type bookmark --bookmark-url "https://..." "commentary"
+thinktape add --audio voice.opus --tag voice
+echo "piped" | thinktape add -
 
-braindump list --today --human
-braindump search "Agent"
-braindump get <id> --content     # raw text, pipe to LLM
+thinktape list --today --human
+thinktape search "Agent"
+thinktape get <id> --content     # raw text, pipe to LLM
 
-braindump update <id> --tag AI
-braindump stats
-braindump tags
-braindump summarize <id>
+thinktape update <id> --tag AI
+thinktape stats
+thinktape tags
+thinktape summarize <id>
 ```
 
 See [skill/SKILL.md](skill/SKILL.md) for the full agent-facing reference.
@@ -273,7 +273,7 @@ See [skill/SKILL.md](skill/SKILL.md) for the full agent-facing reference.
 ### Data Structure
 
 ```
-~/braindump-data/items/
+~/thinktape-data/items/
   20260619-143052-a3f8/   # one directory per item
     item.yaml             # metadata (type, tags, timestamps)
     content.md            # the actual content
@@ -284,7 +284,7 @@ See [skill/SKILL.md](skill/SKILL.md) for the full agent-facing reference.
 **Data is permanent. Code is temporary.** You can rewrite the entire codebase and your items survive untouched. Rebuild the index any time:
 
 ```bash
-uv run braindump rebuild-index
+uv run thinktape rebuild-index
 ```
 
 ### Tech Stack
@@ -300,7 +300,7 @@ See [config.example.toml](config.example.toml) for all options.
 
 Environment variables:
 
-- `BRAINDUMP_DATA_DIR` — override the data directory (default `~/braindump-data`)
+- `BRAINDUMP_DATA_DIR` — override the data directory (default `~/thinktape-data`)
 - `MOONSHOT_API_KEY` / `OPENAI_API_KEY` — LLM provider credentials
 
 ### Tests

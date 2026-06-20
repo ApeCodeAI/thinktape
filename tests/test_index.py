@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from braindump.core import BrainDump
+from thinktape.core import ThinkTape
 
 
-async def test_add_and_list(brain: BrainDump):
+async def test_add_and_list(brain: ThinkTape):
     a = await brain.add("first thought", type="thought")
     b = await brain.add("second thought", type="thought", tags=["focus"])
     c = await brain.add("https://example.com a link", type="bookmark", bookmark_url="https://example.com")
@@ -26,7 +26,7 @@ async def test_add_and_list(brain: BrainDump):
     assert len(focused) == 1 and focused[0].id == b.id
 
 
-async def test_search_fts(brain: BrainDump):
+async def test_search_fts(brain: ThinkTape):
     await brain.add("quick brown fox")
     await brain.add("lazy dog")
     await brain.add("foxtrot dance")
@@ -38,14 +38,14 @@ async def test_search_fts(brain: BrainDump):
     assert "lazy dog" not in contents
 
 
-async def test_search_chinese(brain: BrainDump):
-    await brain.add("今天写了一个 braindump 工具")
+async def test_search_chinese(brain: ThinkTape):
+    await brain.add("今天写了一个 thinktape 工具")
     await brain.add("不相关的内容")
-    results = await brain.search("braindump")
+    results = await brain.search("thinktape")
     assert len(results) == 1
 
 
-async def test_stats(brain: BrainDump):
+async def test_stats(brain: ThinkTape):
     await brain.add("a", type="thought")
     await brain.add("b", type="thought", tags=["t1"])
     await brain.add("c", type="bookmark", bookmark_url="https://x", tags=["t1", "t2"])
@@ -57,7 +57,7 @@ async def test_stats(brain: BrainDump):
     assert stats.by_tag["t2"] == 1
 
 
-async def test_soft_delete_excluded(brain: BrainDump):
+async def test_soft_delete_excluded(brain: ThinkTape):
     a = await brain.add("keep me")
     b = await brain.add("delete me")
     await brain.delete(b.id)
@@ -65,7 +65,7 @@ async def test_soft_delete_excluded(brain: BrainDump):
     assert len(items) == 1 and items[0].id == a.id
 
 
-async def test_rebuild_index(brain: BrainDump):
+async def test_rebuild_index(brain: ThinkTape):
     a = await brain.add("alpha")
     b = await brain.add("beta")
     # Clear the index by hand then rebuild from files.

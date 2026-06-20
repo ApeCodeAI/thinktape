@@ -7,15 +7,15 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from braindump.config import Config, WebConfig
-from braindump.core import BrainDump
-from braindump.web import create_app
+from thinktape.config import Config, WebConfig
+from thinktape.core import ThinkTape
+from thinktape.web import create_app
 
 
 @pytest_asyncio.fixture
 async def client(tmp_path: Path):
     cfg = Config(data_dir=tmp_path, web=WebConfig(host="127.0.0.1", port=0))
-    brain = BrainDump(cfg)
+    brain = ThinkTape(cfg)
     await brain.connect()
     app = create_app(cfg, brain=brain)
     transport = ASGITransport(app=app)

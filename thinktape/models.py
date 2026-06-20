@@ -1,4 +1,4 @@
-"""Pydantic models for braindump."""
+"""Pydantic models for thinktape."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,7 +12,7 @@ ItemSource = Literal["telegram", "web", "cli", "api"]
 
 
 class Item(BaseModel):
-    """An item in the braindump store."""
+    """An item in the thinktape store."""
 
     id: str
     created_at: datetime

@@ -71,61 +71,6 @@ wheels = [
 ]
 
 [[package]]
-name = "braindump"
-version = "2.0.0"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "click" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pyrofork" },
-    { name = "python-multipart" },
-    { name = "pyyaml" },
-    { name = "tgcrypto" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-transcribe = [
-    { name = "faster-whisper" },
-    { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite", specifier = ">=0.20.0" },
-    { name = "click", specifier = ">=8.1.7" },
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "faster-whisper", marker = "extra == 'transcribe'", specifier = ">=1.0.3" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'transcribe'", specifier = "<1.24" },
-    { name = "pydantic", specifier = ">=2.9.0" },
-    { name = "pyrofork", specifier = ">=2.3.45" },
-    { name = "python-multipart", specifier = ">=0.0.12" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "tgcrypto", specifier = ">=1.2.5" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
-]
-provides-extras = ["transcribe"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.6.17"
 source = { registry = "https://pypi.org/simple" }
@@ -864,6 +809,61 @@ name = "tgcrypto"
 version = "1.2.5"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/33/59/7cf5ced989e3139a791d5452d58cb8994de589576b80f9267ba76d794f6c/TgCrypto-1.2.5.tar.gz", hash = "sha256:9bc2cac6fb9a12ef5b08f3dd500174fe374d89b660cce981f57e3138559cb682", size = 37280, upload-time = "2022-11-11T19:55:11.436Z" }
+
+[[package]]
+name = "thinktape"
+version = "2.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "click" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pyrofork" },
+    { name = "python-multipart" },
+    { name = "pyyaml" },
+    { name = "tgcrypto" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+transcribe = [
+    { name = "faster-whisper" },
+    { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20.0" },
+    { name = "click", specifier = ">=8.1.7" },
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "faster-whisper", marker = "extra == 'transcribe'", specifier = ">=1.0.3" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "onnxruntime", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'transcribe'", specifier = "<1.24" },
+    { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "pyrofork", specifier = ">=2.3.45" },
+    { name = "python-multipart", specifier = ">=0.0.12" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "tgcrypto", specifier = ">=1.2.5" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+provides-extras = ["transcribe"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "pytest", specifier = ">=8.3.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+]
 
 [[package]]
 name = "tokenizers"

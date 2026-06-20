@@ -12,7 +12,7 @@ from datetime import datetime, time, timedelta, timezone
 from typing import Any, Callable
 
 from .config import Config
-from .core import BrainDump
+from .core import ThinkTape
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -31,9 +31,9 @@ def _item_to_dict(item: Item) -> dict[str, Any]:
 
 
 class ReviewEngine:
-    """Computes today / weekly / random review snapshots from an active BrainDump."""
+    """Computes today / weekly / random review snapshots from an active ThinkTape."""
 
-    def __init__(self, brain: BrainDump, config: Config | None = None):
+    def __init__(self, brain: ThinkTape, config: Config | None = None):
         self.brain = brain
         self.config = config
 
@@ -198,7 +198,7 @@ class ReviewScheduler:
 
     def __init__(
         self,
-        brain: BrainDump,
+        brain: ThinkTape,
         config: Config,
         send: Callable,  # async (chat_id, text) -> None
         *,

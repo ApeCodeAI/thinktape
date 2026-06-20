@@ -11,7 +11,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 
 from .config import Config
-from .core import BrainDump
+from .core import ThinkTape
 from .summarize import SummaryWorker
 from .transcribe import TranscribeQueue
 
@@ -53,13 +53,13 @@ def _format_item_summary(item) -> str:
     return "  ".join(parts)
 
 
-class BrainDumpBot:
-    """Pyrofork bot wrapping BrainDump."""
+class ThinkTapeBot:
+    """Pyrofork bot wrapping ThinkTape."""
 
     def __init__(
         self,
         config: Config,
-        brain: BrainDump,
+        brain: ThinkTape,
         transcribe_queue: TranscribeQueue | None = None,
         summary_worker: SummaryWorker | None = None,
     ):
@@ -107,7 +107,7 @@ class BrainDumpBot:
             if not self._allowed(message):
                 return
             await message.reply_text(
-                "👋 欢迎使用 braindump v2\n\n"
+                "👋 欢迎使用 thinktape v2\n\n"
                 "随手发送文字、语音、图片、链接，我会自动保存并整理。\n\n"
                 "命令：\n"
                 "/status — 统计信息\n"
@@ -121,7 +121,7 @@ class BrainDumpBot:
                 return
             stats = await self.brain.stats()
             lines = [
-                f"📊 braindump 统计",
+                f"📊 thinktape 统计",
                 f"总数: {stats.total}",
                 f"今日: {stats.today}",
             ]

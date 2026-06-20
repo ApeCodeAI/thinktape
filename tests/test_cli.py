@@ -1,4 +1,4 @@
-"""Tests for the braindump CLI."""
+"""Tests for the thinktape CLI."""
 from __future__ import annotations
 
 import json
@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from braindump import cli as cli_module
-from braindump.cli import cli
+from thinktape import cli as cli_module
+from thinktape.cli import cli
 
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
     """CLI runner with isolated data dir."""
-    data_dir = tmp_path / "braindump-data"
+    data_dir = tmp_path / "thinktape-data"
     data_dir.mkdir()
     monkeypatch.setenv("BRAINDUMP_DATA_DIR", str(data_dir))
     return CliRunner(), data_dir

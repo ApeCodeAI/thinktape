@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 from .config import TranscribeConfig
-from .core import BrainDump
+from .core import ThinkTape
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class Transcriber:
 class TranscribeQueue:
     """Background worker that transcribes audio/video items as they come in."""
 
-    def __init__(self, brain: BrainDump):
+    def __init__(self, brain: ThinkTape):
         self.brain = brain
         self.transcriber = Transcriber(brain.config.transcribe)
         self.queue: asyncio.Queue[str] = asyncio.Queue()

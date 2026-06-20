@@ -1,8 +1,8 @@
-# CLAUDE.md — braindump v2
+# CLAUDE.md — ThinkTape v2
 
 ## 项目概述
 
-braindump 是一个 **Voice & Video First** 的个人原材料库。AI-native, Agent-ready, 开源。
+ThinkTape 是一个 **Voice & Video First** 的个人思维录音带。AI-native, Agent-ready, 开源。
 
 语音和视频是第一输入方式，文字是次要的。用户通过 Telegram Bot、Web UI 或 CLI 随手 dump 语音、视频、图片、文字、链接，AI 自动转写和摘要，任何 Agent 都可以通过 CLI 直接调用。
 
@@ -23,9 +23,9 @@ braindump 是一个 **Voice & Video First** 的个人原材料库。AI-native, A
 ## 项目结构
 
 ```
-braindump/
+thinktape/
   __init__.py
-  core.py          # BrainDump 类 — 核心业务逻辑
+  core.py          # ThinkTape 类 — 核心业务逻辑
   store.py         # ItemStore — 文件读写 (items/)
   index.py         # IndexDB — SQLite 索引
   bot.py           # Telegram Bot
@@ -62,15 +62,15 @@ DESIGN.md
 
 ## 配置
 
-运行时配置在 `~/braindump-data/config.toml`（不在仓库内）。
+运行时配置在 `~/thinktape-data/config.toml`（不在仓库内）。
 仓库内放 `config.example.toml` 作为参考。
 
 ## 运行
 
 ```bash
-uv run braindump serve    # 启动全部 (bot + web + transcriber)
-uv run braindump web      # 只启动 web
-uv run braindump rebuild-index  # 从 items/ 重建 SQLite 索引
+uv run thinktape serve    # 启动全部 (bot + web + transcriber)
+uv run thinktape web      # 只启动 web
+uv run thinktape rebuild-index  # 从 items/ 重建 SQLite 索引
 ```
 
 ## Web UI 设计要求
@@ -89,5 +89,5 @@ uv run braindump rebuild-index  # 从 items/ 重建 SQLite 索引
 
 - Pyrofork 不是 Pyrogram，import 是 `from pyrogram import ...` 但包名是 `pyrofork`
 - faster-whisper 在 macOS x86_64 需要 `onnxruntime<1.24`
-- config.toml 不在仓库内，通过 BRAINDUMP_DATA_DIR 环境变量或默认 ~/braindump-data/ 找到
+- config.toml 不在仓库内，通过 BRAINDUMP_DATA_DIR 环境变量或默认 ~/thinktape-data/ 找到
 - 前端必须 `npm run build` 生成 dist/，FastAPI 服务 dist/ 静态文件

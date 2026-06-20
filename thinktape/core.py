@@ -1,4 +1,4 @@
-"""BrainDump — main class combining ItemStore + IndexDB."""
+"""ThinkTape — main class combining ItemStore + IndexDB."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +10,7 @@ from .models import Item, Stats
 from .store import ItemStore
 
 
-class BrainDump:
+class ThinkTape:
     """Main facade: file-backed item store + SQLite index."""
 
     def __init__(self, config: Config):

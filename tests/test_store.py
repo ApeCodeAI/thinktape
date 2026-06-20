@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from braindump.store import ItemStore, generate_id
+from thinktape.store import ItemStore, generate_id
 
 
 async def test_create_thought(tmp_path: Path):

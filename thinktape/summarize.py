@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from .config import LLMConfig
-from .core import BrainDump
+from .core import ThinkTape
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ class Summarizer:
 class SummaryWorker:
     """Background worker that summarizes items without a summary."""
 
-    def __init__(self, brain: BrainDump, cfg: LLMConfig):
+    def __init__(self, brain: ThinkTape, cfg: LLMConfig):
         self.brain = brain
         self.cfg = cfg
         self.summarizer = Summarizer(cfg)

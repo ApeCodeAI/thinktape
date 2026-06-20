@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from braindump.config import Config, WebConfig
-from braindump.core import BrainDump
+from thinktape.config import Config, WebConfig
+from thinktape.core import ThinkTape
 
 
 @pytest.fixture
@@ -22,8 +22,8 @@ def config(data_dir: Path) -> Config:
 
 
 @pytest_asyncio.fixture
-async def brain(config: Config) -> BrainDump:
-    b = BrainDump(config)
+async def brain(config: Config) -> ThinkTape:
+    b = ThinkTape(config)
     await b.connect()
     try:
         yield b

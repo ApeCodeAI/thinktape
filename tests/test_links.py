@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from braindump.core import BrainDump
-from braindump.links import WIKILINK_RE, extract_links, find_concept_matches
+from thinktape.core import ThinkTape
+from thinktape.links import WIKILINK_RE, extract_links, find_concept_matches
 
 
 # ---------- parser ----------
@@ -54,13 +54,13 @@ def test_find_concept_matches_case_insensitive():
 
 # ---------- index ----------
 
-async def test_links_indexed_on_add(brain: BrainDump):
+async def test_links_indexed_on_add(brain: ThinkTape):
     item = await brain.add("讨论 [[Agent 记忆]] 这个概念")
     outgoing = await brain.index.get_outgoing_links(item.id)
     assert outgoing == [{"type": "concept", "target": "Agent 记忆"}]
 
 
-async def test_links_updated_on_content_change(brain: BrainDump):
+async def test_links_updated_on_content_change(brain: ThinkTape):
     a = await brain.add("初始内容 [[Topic A]]")
     out1 = await brain.index.get_outgoing_links(a.id)
     assert any(link["target"] == "Topic A" for link in out1)
@@ -71,14 +71,14 @@ async def test_links_updated_on_content_change(brain: BrainDump):
     assert "Topic B" in targets
 
 
-async def test_item_id_links_create_backlinks(brain: BrainDump):
+async def test_item_id_links_create_backlinks(brain: ThinkTape):
     target = await brain.add("the target item")
     source = await brain.add(f"reference to [[{target.id}]]")
     backlinks = await brain.get_backlinks(target.id)
     assert any(b["id"] == source.id and b["via"] == "item" for b in backlinks)
 
 
-async def test_concept_references_query(brain: BrainDump):
+async def test_concept_references_query(brain: ThinkTape):
     a = await brain.add("explore [[Agent 记忆]]")
     b = await brain.add("more thoughts on [[Agent 记忆]]")
     await brain.add("unrelated")
@@ -86,7 +86,7 @@ async def test_concept_references_query(brain: BrainDump):
     assert set(refs) == {a.id, b.id}
 
 
-async def test_all_concepts_with_counts(brain: BrainDump):
+async def test_all_concepts_with_counts(brain: ThinkTape):
     await brain.add("[[Alpha]]")
     await brain.add("[[Alpha]] again")
     await brain.add("[[Beta]]")
@@ -95,7 +95,7 @@ async def test_all_concepts_with_counts(brain: BrainDump):
     assert names == {"Alpha": 2, "Beta": 1}
 
 
-async def test_get_concept_items_text_match_and_wikilink(brain: BrainDump):
+async def test_get_concept_items_text_match_and_wikilink(brain: ThinkTape):
     # Item A explicitly uses [[Topic]]
     a = await brain.add("about [[Topic]]")
     # Item B mentions Topic in plain text
@@ -108,7 +108,7 @@ async def test_get_concept_items_text_match_and_wikilink(brain: BrainDump):
     assert b.id in ids
 
 
-async def test_rebuild_index_rebuilds_links(brain: BrainDump):
+async def test_rebuild_index_rebuilds_links(brain: ThinkTape):
     a = await brain.add("[[X]] and [[Y]]")
     await brain.index.db.execute("DELETE FROM links")
     await brain.index.db.commit()
@@ -120,14 +120,14 @@ async def test_rebuild_index_rebuilds_links(brain: BrainDump):
     assert targets == {"X", "Y"}
 
 
-async def test_delete_clears_outgoing_links(brain: BrainDump):
+async def test_delete_clears_outgoing_links(brain: ThinkTape):
     a = await brain.add("[[X]]")
     await brain.index.delete(a.id)
     out = await brain.index.get_outgoing_links(a.id)
     assert out == []
 
 
-async def test_get_links_resolves_item_targets(brain: BrainDump):
+async def test_get_links_resolves_item_targets(brain: ThinkTape):
     target = await brain.add("target body")
     src = await brain.add(f"see [[{target.id}]]")
     out = await brain.get_links(src.id)
@@ -137,7 +137,7 @@ async def test_get_links_resolves_item_targets(brain: BrainDump):
     assert item_links[0]["item"]["id"] == target.id
 
 
-async def test_get_links_resolves_concept_matches(brain: BrainDump):
+async def test_get_links_resolves_concept_matches(brain: ThinkTape):
     src = await brain.add("references [[Topic]]")
     await brain.add("Topic is mentioned in this other item too")
     out = await brain.get_links(src.id)
