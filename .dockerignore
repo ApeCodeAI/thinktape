@@ -13,10 +13,10 @@ htmlcov
 .claude
 
 # Don't ship the user's local data into the image
-~/braindump-data
+~/thinktape-data
 *.session
 *.session-journal
-braindump.db
+thinktape.db
 
 # Frontend artefacts (built inside the image)
 frontend/node_modules

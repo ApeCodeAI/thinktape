@@ -183,7 +183,7 @@ uv run thinktape rebuild-index   # 从 items/ 重建 SQLite 索引
 
 环境变量：
 
-- `BRAINDUMP_DATA_DIR` — 覆盖数据目录（默认 `~/thinktape-data`）
+- `THINKTAPE_DATA_DIR` — 覆盖数据目录（默认 `~/thinktape-data`）
 - `MOONSHOT_API_KEY` / `OPENAI_API_KEY` — LLM provider 凭证
 
 ### 测试
@@ -300,7 +300,7 @@ See [config.example.toml](config.example.toml) for all options.
 
 Environment variables:
 
-- `BRAINDUMP_DATA_DIR` — override the data directory (default `~/thinktape-data`)
+- `THINKTAPE_DATA_DIR` — override the data directory (default `~/thinktape-data`)
 - `MOONSHOT_API_KEY` / `OPENAI_API_KEY` — LLM provider credentials
 
 ### Tests

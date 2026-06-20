@@ -17,7 +17,7 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    BRAINDUMP_DATA_DIR=/data
+    THINKTAPE_DATA_DIR=/data
 
 # System deps:
 # - build-essential: tgcrypto (Pyrofork) builds a C extension
@@ -52,7 +52,7 @@ RUN uv venv /opt/venv \
 
 # Copy source and built frontend
 COPY pyproject.toml README.md ./
-COPY braindump/ ./braindump/
+COPY thinktape/ ./thinktape/
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
 # Install the package itself (no deps — already installed above)
@@ -64,6 +64,6 @@ VOLUME ["/data"]
 EXPOSE 8080
 
 # Default: run everything (bot + web + transcriber).
-# Override at runtime, e.g. `docker run ... braindump web` for web-only.
-ENTRYPOINT ["braindump"]
+# Override at runtime, e.g. `docker run ... thinktape web` for web-only.
+ENTRYPOINT ["thinktape"]
 CMD ["serve"]
