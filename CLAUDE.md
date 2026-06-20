@@ -89,5 +89,5 @@ uv run thinktape rebuild-index  # 从 items/ 重建 SQLite 索引
 
 - Pyrofork 不是 Pyrogram，import 是 `from pyrogram import ...` 但包名是 `pyrofork`
 - faster-whisper 在 macOS x86_64 需要 `onnxruntime<1.24`
-- config.toml 不在仓库内，通过 BRAINDUMP_DATA_DIR 环境变量或默认 ~/thinktape-data/ 找到
+- config.toml 不在仓库内，通过 THINKTAPE_DATA_DIR 环境变量或默认 ~/thinktape-data/ 找到
 - 前端必须 `npm run build` 生成 dist/，FastAPI 服务 dist/ 静态文件

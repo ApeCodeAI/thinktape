@@ -6,7 +6,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![Stars](https://img.shields.io/github/stars/ApeCodeAI/braindump?style=social)](https://github.com/ApeCodeAI/braindump/stargazers)
+[![Stars](https://img.shields.io/github/stars/ApeCodeAI/thinktape?style=social)](https://github.com/ApeCodeAI/thinktape/stargazers)
 [![Sponsored by BytePass](https://img.shields.io/badge/sponsored%20by-BytePass.ai-7C3AED.svg)](https://bytepass.ai)
 
 Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](https://bytepass.ai)**
@@ -52,8 +52,8 @@ Built by **[ApeCode.ai](https://apecode.ai)** · Sponsored by **[BytePass.ai](ht
 #### 1. 安装
 
 ```bash
-git clone https://github.com/ApeCodeAI/braindump.git
-cd braindump
+git clone https://github.com/ApeCodeAI/thinktape.git
+cd thinktape
 uv sync --extra transcribe
 ```
 
@@ -219,8 +219,8 @@ This is not yet another note-taking app. ThinkTape exists for a different reason
 
 ```bash
 # 1. Install
-git clone https://github.com/ApeCodeAI/braindump.git
-cd braindump
+git clone https://github.com/ApeCodeAI/thinktape.git
+cd thinktape
 uv sync --extra transcribe
 
 # 2. Configure

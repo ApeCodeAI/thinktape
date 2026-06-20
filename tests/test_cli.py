@@ -16,7 +16,7 @@ def runner(tmp_path, monkeypatch):
     """CLI runner with isolated data dir."""
     data_dir = tmp_path / "thinktape-data"
     data_dir.mkdir()
-    monkeypatch.setenv("BRAINDUMP_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("THINKTAPE_DATA_DIR", str(data_dir))
     return CliRunner(), data_dir
 
 

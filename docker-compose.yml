@@ -20,14 +20,13 @@ services:
       - "8080:8080"
     environment:
       THINKTAPE_DATA_DIR: /data
-      BRAINDUMP_DATA_DIR: /data    # backward compat
       # Optional: AI summarization (Kimi / OpenAI-compatible)
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       # Your raw items + config + sqlite index + bot session.
       # Override with: THINKTAPE_DATA_DIR=/abs/path docker compose up -d
-      - ${THINKTAPE_DATA_DIR:-${BRAINDUMP_DATA_DIR:-${HOME}/thinktape-data}}:/data
+      - ${THINKTAPE_DATA_DIR:-${HOME}/thinktape-data}:/data
       # Persist whisper model cache so it's not re-downloaded on each rebuild
       - thinktape-models:/root/.cache/huggingface
 
