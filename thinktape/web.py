@@ -11,7 +11,6 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -237,39 +236,41 @@ def create_app(
         return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
     # ---------- Static frontend ----------
+    # Prefer the new Expo universal web build; fall back to the legacy Vite web.
+    repo_root = Path(__file__).resolve().parent.parent
+    web_dist = repo_root / "app" / "dist"
+    if not (web_dist / "index.html").exists():
+        web_dist = repo_root / "frontend" / "dist"
+    web_dist = web_dist.resolve()
+    index_file = web_dist / "index.html"
 
-    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if frontend_dist.exists():
-        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    if index_file.exists():
 
         @app.get("/")
         async def index():
-            return FileResponse(frontend_dist / "index.html")
+            return FileResponse(index_file)
 
-        @app.get("/favicon.svg")
-        async def favicon():
-            p = frontend_dist / "favicon.svg"
-            if p.exists():
-                return FileResponse(p)
-            raise HTTPException(status_code=404)
-
-        # SPA fallback for client-side routes
+        # Serve any built static asset; fall back to index.html for client routes.
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
             if full_path.startswith("api/"):
                 raise HTTPException(status_code=404)
-            # serve file if it exists in dist root
-            candidate = frontend_dist / full_path
-            if candidate.exists() and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(frontend_dist / "index.html")
+            candidate = (web_dist / full_path).resolve()
+            # Path-traversal guard: candidate must stay within web_dist.
+            if web_dist == candidate or web_dist in candidate.parents:
+                if candidate.is_file():
+                    return FileResponse(candidate)
+                html = (web_dist / f"{full_path}.html").resolve()
+                if html.is_file() and web_dist in html.parents:
+                    return FileResponse(html)
+            return FileResponse(index_file)
     else:
         @app.get("/")
         async def index_placeholder():
             return JSONResponse(
                 {
                     "ok": True,
-                    "message": "thinktape web — frontend not built yet. Run `cd frontend && npm install && npm run build`.",
+                    "message": "thinktape web — frontend not built yet. Run `cd app && npx expo export -p web` (or build the legacy frontend).",
                 }
             )
 

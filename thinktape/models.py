@@ -10,7 +10,7 @@ from .tags import extract_hashtags
 
 ItemType = Literal["thought", "bookmark", "note"]
 ItemStatus = Literal["active", "archived", "deleted"]
-ItemSource = Literal["telegram", "web", "cli", "api"]
+ItemSource = Literal["telegram", "web", "cli", "api", "app"]
 
 
 class Item(BaseModel):
