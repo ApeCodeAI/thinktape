@@ -1,6 +1,7 @@
 """Tests for FastAPI endpoints."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,48 @@ async def test_inline_hashtags_in_response_and_filter(client):
     # tag list endpoint includes the inline tag too.
     r = await ac.get("/api/tags")
     assert "工作" in r.json()["tags"]
+
+
+@asynccontextmanager
+async def _remote_client(tmp_path):
+    """A client whose requests appear to come from a non-loopback (LAN) host."""
+    cfg = Config(data_dir=tmp_path, web=WebConfig(host="127.0.0.1", port=0))
+    brain = ThinkTape(cfg)
+    await brain.connect()
+    app = create_app(cfg, brain=brain)
+    transport = ASGITransport(app=app, client=("10.0.0.42", 55555))
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    await brain.close()
+
+
+async def test_auth_disabled_until_a_device_is_paired(tmp_path):
+    # No devices paired → even a remote (LAN) request is allowed (backward compatible).
+    async with _remote_client(tmp_path) as ac:
+        r = await ac.post("/api/items", json={"content": "no auth yet"})
+        assert r.status_code == 200
+
+
+async def test_auth_enforced_after_pairing(tmp_path):
+    from thinktape.auth import DeviceKeyStore
+
+    entry = DeviceKeyStore(tmp_path).add("phone")  # same data_dir as the app
+    async with _remote_client(tmp_path) as ac:
+        # Remote without a key is now rejected.
+        assert (await ac.get("/api/items")).status_code == 401
+        # Wrong key rejected; correct key accepted.
+        assert (await ac.get("/api/items", headers={"X-ThinkTape-Key": "wrong"})).status_code == 401
+        assert (await ac.get("/api/items", headers={"X-ThinkTape-Key": entry["key"]})).status_code == 200
+        # Non-API routes (e.g. health) stay open so the web UI can always load.
+        assert (await ac.get("/healthz")).status_code == 200
+
+
+async def test_pair_endpoint_mints_key(client):
+    ac, _ = client
+    r = await ac.post("/api/pair", json={"name": "laptop"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["name"] == "laptop" and len(data["key"]) > 10
 
 
 async def test_healthz(client):

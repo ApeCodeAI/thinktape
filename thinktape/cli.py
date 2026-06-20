@@ -18,6 +18,7 @@ from typing import Any
 import click
 import uvicorn
 
+from .auth import DeviceKeyStore
 from .config import Config, load_config
 from .core import ThinkTape
 from .models import Item
@@ -758,6 +759,44 @@ def version():
 def show_config(ctx: click.Context):
     """Show current configuration (sanitized)."""
     _print_json(_sanitize_config(ctx.obj["config"]))
+
+
+@cli.command()
+@click.option("--name", default="device", help="A label for the device being paired.")
+@click.option("--human", is_flag=True)
+@click.pass_context
+def pair(ctx: click.Context, name: str, human: bool):
+    """Pair a new device — mints a device key for remote (e.g. phone) access.
+
+    Once any device is paired, remote clients must send the key in the
+    X-ThinkTape-Key header. The local machine (loopback) is always trusted.
+    """
+    config = ctx.obj["config"]
+    store = DeviceKeyStore(config.data_dir)
+    entry = store.add(name)
+    if human:
+        click.echo(f"已配对设备「{entry['name']}」")
+        click.echo(f"设备 Key: {entry['key']}")
+        click.echo("在手机 App 设置里填入 daemon 地址 + 这个 Key 即可。")
+    else:
+        _print_json({"name": entry["name"], "key": entry["key"]})
+
+
+@cli.command()
+@click.option("--human", is_flag=True)
+@click.pass_context
+def devices(ctx: click.Context, human: bool):
+    """List paired devices (keys are previewed, not shown in full)."""
+    config = ctx.obj["config"]
+    store = DeviceKeyStore(config.data_dir)
+    devs = store.list_public()
+    if human:
+        if not devs:
+            click.echo("尚无配对设备（远程访问当前不需要 Key）。")
+        for d in devs:
+            click.echo(f"{d['name']}  {d['key_preview']}")
+    else:
+        _print_json({"devices": devs, "auth_active": not store.is_empty()})
 
 
 # ============================== service ==============================

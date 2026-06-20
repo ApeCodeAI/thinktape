@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from .auth import KEY_HEADER, DeviceKeyStore, is_loopback
 from .config import Config
 from .core import ThinkTape
 from .models import Item
@@ -47,6 +49,10 @@ class UpdateItemRequest(BaseModel):
     type: str | None = None
 
 
+class PairRequest(BaseModel):
+    name: str = "device"
+
+
 def create_app(
     config: Config,
     brain: ThinkTape | None = None,
@@ -74,6 +80,20 @@ def create_app(
 
     app = FastAPI(title="thinktape", version="2.0.0", lifespan=lifespan)
 
+    key_store = DeviceKeyStore(config.data_dir)
+
+    async def _device_key_auth(request: Request, call_next):
+        # Local machine is always trusted. Remote clients need a paired key
+        # only once at least one device exists — so existing setups are unaffected.
+        if request.url.path.startswith("/api/"):
+            client_host = request.client.host if request.client else None
+            if not is_loopback(client_host) and not key_store.is_empty():
+                if not key_store.verify(request.headers.get(KEY_HEADER)):
+                    return JSONResponse({"detail": "unauthorized device"}, status_code=401)
+        return await call_next(request)
+
+    # Auth added first (inner); CORS added last (outer) so 401s keep CORS headers.
+    app.add_middleware(BaseHTTPMiddleware, dispatch=_device_key_auth)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -170,6 +190,15 @@ def create_app(
     @app.get("/api/tags")
     async def tags():
         return {"tags": await brain.all_tags()}
+
+    @app.get("/api/devices")
+    async def list_devices():
+        return {"devices": key_store.list_public(), "auth_active": not key_store.is_empty()}
+
+    @app.post("/api/pair")
+    async def pair_device(req: PairRequest):
+        entry = key_store.add(req.name)
+        return {"name": entry["name"], "key": entry["key"]}
 
     @app.post("/api/rebuild-index")
     async def rebuild_index():
