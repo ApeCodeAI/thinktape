@@ -22,7 +22,7 @@ from .config import Config, load_config
 from .core import ThinkTape
 from .models import Item
 
-_VERSION = "2.0.0"
+_VERSION = "2.0.1"
 _TZ_CST = timezone(timedelta(hours=8))
 
 _TYPE_ICON = {
