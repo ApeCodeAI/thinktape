@@ -88,6 +88,23 @@ async def test_search_endpoint(client):
     assert items[0]["content"] == "apple pie"
 
 
+async def test_inline_hashtags_in_response_and_filter(client):
+    ac, _ = client
+    r = await ac.post("/api/items", json={"content": "记录 #工作 想法", "tags": ["手动"]})
+    assert r.status_code == 200
+    # API exposes the union (explicit + inline) as `tags`.
+    assert set(r.json()["tags"]) == {"手动", "工作"}
+
+    # ...and the inline tag is filterable.
+    r = await ac.get("/api/items", params={"tag": "工作"})
+    items = r.json()["items"]
+    assert len(items) == 1 and items[0]["content"] == "记录 #工作 想法"
+
+    # tag list endpoint includes the inline tag too.
+    r = await ac.get("/api/tags")
+    assert "工作" in r.json()["tags"]
+
+
 async def test_healthz(client):
     ac, _ = client
     r = await ac.get("/healthz")

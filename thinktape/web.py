@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 def _item_to_dict(item: Item) -> dict[str, Any]:
     d = item.model_dump(mode="json")
     # frontend wants timestamp strings as-is; pydantic v2 model_dump(json) already does it.
+    # Expose the union of explicit tags + inline #hashtags so every response
+    # (including store-sourced GET) shows hashtags typed into the body.
+    d["tags"] = item.all_tags
     d["images"] = item.images
     return d
 

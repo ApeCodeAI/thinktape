@@ -272,5 +272,5 @@ def _item_brief(item: Item) -> dict:
         "type": item.type,
         "created_at": item.created_at.isoformat(),
         "content": content,
-        "tags": item.tags,
+        "tags": item.all_tags,
     }

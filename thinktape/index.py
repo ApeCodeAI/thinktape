@@ -103,6 +103,9 @@ class IndexDB:
     # ---------- upsert / delete ----------
 
     async def upsert(self, item: Item) -> None:
+        # Index the union of explicit tags + inline #hashtags so filtering,
+        # stats, all_tags and FTS all see hashtags typed into the body.
+        all_tags = item.all_tags
         await self.db.execute(
             """
             INSERT INTO items(id, created_at, updated_at, type, source, status, tags,
@@ -130,7 +133,7 @@ class IndexDB:
                 item.type,
                 item.source,
                 item.status,
-                json.dumps(item.tags, ensure_ascii=False),
+                json.dumps(all_tags, ensure_ascii=False),
                 item.bookmark_url,
                 item.summary,
                 int(item.has_audio),
@@ -143,7 +146,7 @@ class IndexDB:
         await self.db.execute("DELETE FROM items_fts WHERE id = ?", (item.id,))
         await self.db.execute(
             "INSERT INTO items_fts(id, content, tags, bookmark_url) VALUES(?, ?, ?, ?)",
-            (item.id, item.content, " ".join(item.tags), item.bookmark_url or ""),
+            (item.id, item.content, " ".join(all_tags), item.bookmark_url or ""),
         )
         await self._refresh_links(item.id, item.content)
         await self.db.commit()

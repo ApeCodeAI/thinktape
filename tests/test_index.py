@@ -57,6 +57,42 @@ async def test_stats(brain: ThinkTape):
     assert stats.by_tag["t2"] == 1
 
 
+async def test_inline_hashtags_filterable(brain: ThinkTape):
+    a = await brain.add("记录一下 #工作 的想法")  # no explicit tags
+    await brain.add("无关内容")
+    focused = await brain.list(tag="工作")
+    assert len(focused) == 1 and focused[0].id == a.id
+    # union surfaces on the listed item
+    assert "工作" in focused[0].tags
+
+
+async def test_inline_and_explicit_union_in_stats_and_all_tags(brain: ThinkTape):
+    await brain.add("正文 #工作 #生活", tags=["手动"])
+    stats = await brain.stats()
+    assert stats.by_tag["工作"] == 1
+    assert stats.by_tag["生活"] == 1
+    assert stats.by_tag["手动"] == 1
+    assert set(await brain.all_tags()) >= {"工作", "生活", "手动"}
+
+
+async def test_yaml_keeps_explicit_tags_only(brain: ThinkTape):
+    item = await brain.add("派生 #工作 不写回 yaml", tags=["手动"])
+    # The on-disk source of truth keeps only explicit tags...
+    on_disk = await brain.store.get(item.id)
+    assert on_disk.tags == ["手动"]
+    # ...while the index/list view exposes the union.
+    listed = await brain.list(tag="工作")
+    assert len(listed) == 1
+
+
+async def test_editing_content_updates_derived_tags(brain: ThinkTape):
+    item = await brain.add("first #alpha")
+    assert len(await brain.list(tag="alpha")) == 1
+    await brain.update(item.id, content="now #beta only")
+    assert await brain.list(tag="alpha") == []
+    assert len(await brain.list(tag="beta")) == 1
+
+
 async def test_soft_delete_excluded(brain: ThinkTape):
     a = await brain.add("keep me")
     b = await brain.add("delete me")

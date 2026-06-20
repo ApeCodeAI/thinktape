@@ -53,6 +53,7 @@ def _setup_logging(level: str = "WARNING") -> None:
 
 def _item_to_dict(item: Item) -> dict[str, Any]:
     d = item.model_dump(mode="json")
+    d["tags"] = item.all_tags
     d["images"] = item.images
     return d
 
@@ -80,7 +81,7 @@ def _human_item_line(item: Item) -> str:
     body = (item.content or "").strip().replace("\n", " ")
     if len(body) > 80:
         body = body[:77] + "…"
-    tags = " ".join(f"#{t}" for t in item.tags)
+    tags = " ".join(f"#{t}" for t in item.all_tags)
     parts = [f"  {when}", icon, body]
     if item.bookmark_url and not item.bookmark_url in body:
         parts.append(item.bookmark_url)
@@ -93,7 +94,7 @@ def _human_item_detail(item: Item) -> str:
     icon = _TYPE_ICON.get(item.type, "📝")
     label = _TYPE_LABEL.get(item.type, item.type)
     when = item.created_at.astimezone(_TZ_CST).strftime("%Y-%m-%d %H:%M")
-    tags = " ".join(f"#{t}" for t in item.tags)
+    tags = " ".join(f"#{t}" for t in item.all_tags)
     head = f"{icon} {label}  {when}"
     if tags:
         head += f"  {tags}"
@@ -725,7 +726,11 @@ def summarize(ctx: click.Context, item_id: str | None, all_items: bool, force: b
         for it in targets:
             try:
                 r = await summarizer.summarize_and_tag(it.content)
-                merged = list(dict.fromkeys(it.tags + r.get("tags", [])))
+                # Merge onto explicit tags only (brain.list returns the union);
+                # inline #hashtags stay derived, not baked into item.yaml.
+                base = await brain.get(it.id)
+                base_tags = base.tags if base else it.tags
+                merged = list(dict.fromkeys(base_tags + r.get("tags", [])))
                 await brain.update(it.id, summary=r.get("summary"), tags=merged)
                 processed.append({"id": it.id, "summary": r.get("summary"), "tags": merged})
             except Exception as e:

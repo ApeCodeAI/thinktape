@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .tags import extract_hashtags
+
 ItemType = Literal["thought", "bookmark", "note"]
 ItemStatus = Literal["active", "archived", "deleted"]
 ItemSource = Literal["telegram", "web", "cli", "api"]
@@ -33,6 +35,21 @@ class Item(BaseModel):
     # Not stored in item.yaml — populated when reading.
     content: str = ""
     images: list[str] = Field(default_factory=list)
+
+    @property
+    def all_tags(self) -> list[str]:
+        """Explicit tags unioned with #hashtags parsed from content.
+
+        First-seen order, de-duplicated. Used for indexing and display;
+        item.yaml still persists only the explicit `tags`.
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        for tag in (*self.tags, *extract_hashtags(self.content)):
+            if tag and tag not in seen:
+                seen.add(tag)
+                out.append(tag)
+        return out
 
     def to_yaml_dict(self) -> dict:
         """Serialize for item.yaml (excludes content and images list)."""

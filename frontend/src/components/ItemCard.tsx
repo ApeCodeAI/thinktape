@@ -309,6 +309,7 @@ export function ItemCard({
                     onConceptClick?.(target);
                   }
                 }}
+                onTagClick={onTagClick}
               >
                 {bodyContent}
               </Markdown>
