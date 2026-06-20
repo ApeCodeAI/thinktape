@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from thinktape import __version__
 from thinktape import cli as cli_module
 from thinktape.cli import cli
 
@@ -30,7 +31,7 @@ def test_version(runner):
     r = _invoke(runner, "version")
     assert r.exit_code == 0
     data = json.loads(r.output)
-    assert data["version"] == "2.0.0"
+    assert data["version"] == __version__
 
 
 def test_add_and_list(runner):

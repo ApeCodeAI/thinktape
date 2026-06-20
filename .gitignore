@@ -5,9 +5,6 @@ __pycache__/
 *.egg-info/
 dist/
 
-# uv
-uv.lock
-
 # Frontend
 frontend/node_modules/
 frontend/dist/
