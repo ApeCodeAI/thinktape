@@ -53,6 +53,14 @@
           "cameraPermission": "ThinkTape 需要使用相机来拍照、录像。",
           "microphonePermission": "ThinkTape 需要使用麦克风来录音、录像。"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "experiments": {
