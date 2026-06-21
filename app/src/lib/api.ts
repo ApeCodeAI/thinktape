@@ -3,6 +3,7 @@
  * On web (same origin) baseUrl is "" and no key is needed locally; on a phone
  * over LAN, baseUrl + device key are set in Settings and sent on every request.
  */
+import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import { getConn } from "./config";
 
@@ -152,6 +153,35 @@ export const api = {
       throw new Error(detail);
     }
     return (await res.json()) as Item;
+  },
+
+  /**
+   * Native single-file upload via expo-file-system (avoids React Native's
+   * FormData file parts, which throw "Unsupported FormDataPart implementation"
+   * on the new architecture). One file → one item.
+   */
+  async uploadFileNative(
+    fileUri: string,
+    field: "audio" | "images" | "video",
+    mimeType: string,
+    meta: { content?: string; type?: string; tags?: string[] } = {},
+  ): Promise<Item> {
+    const parameters: Record<string, string> = {};
+    if (meta.content) parameters.content = meta.content;
+    if (meta.type) parameters.type = meta.type;
+    if (meta.tags?.length) parameters.tags = meta.tags.join(",");
+    const res = await uploadAsync(base() + "/api/items/upload", fileUri, {
+      httpMethod: "POST",
+      uploadType: FileSystemUploadType.MULTIPART,
+      fieldName: field,
+      mimeType,
+      parameters,
+      headers: authHeaders(),
+    });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`${res.status} ${(res.body || "").slice(0, 200)}`);
+    }
+    return JSON.parse(res.body) as Item;
   },
   create: (body: {
     content: string;

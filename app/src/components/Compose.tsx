@@ -55,7 +55,21 @@ export function Compose({ onCreated }: { onCreated: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.upload({ content: text.trim(), type, ...parts });
+      if (native) {
+        // expo-file-system uploadAsync (one file → one item); avoids RN FormData.
+        const meta = { content: text.trim(), type };
+        if (parts.audio) {
+          await api.uploadFileNative(parts.audio.uri, "audio", parts.audio.mimeType ?? "audio/m4a", meta);
+        }
+        if (parts.video) {
+          await api.uploadFileNative(parts.video.uri, "video", parts.video.mimeType ?? "video/mp4", meta);
+        }
+        for (const img of parts.images ?? []) {
+          await api.uploadFileNative(img.uri, "images", img.mimeType ?? "image/jpeg", meta);
+        }
+      } else {
+        await api.upload({ content: text.trim(), type, ...parts });
+      }
       reset();
       onCreated();
     } catch (e: any) {

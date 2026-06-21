@@ -73,12 +73,27 @@ export default function Feed() {
             <TextInput
               style={styles.search}
               value={q}
-              onChangeText={setQ}
+              onChangeText={(v) => {
+                setQ(v);
+                if (v === "") setSubmittedQ("");
+              }}
               onSubmitEditing={() => setSubmittedQ(q.trim())}
               placeholder="搜索…"
               placeholderTextColor={colors.muted}
               returnKeyType="search"
             />
+            {(q !== "" || submittedQ !== "") && (
+              <Pressable
+                style={styles.gear}
+                hitSlop={8}
+                onPress={() => {
+                  setQ("");
+                  setSubmittedQ("");
+                }}
+              >
+                <Text style={styles.gearText}>✕</Text>
+              </Pressable>
+            )}
             <Link href="/settings" asChild>
               <Pressable style={styles.gear} hitSlop={8}>
                 <Text style={styles.gearText}>⚙</Text>
