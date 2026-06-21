@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { api, type UploadFilePart, type UploadParts } from "../lib/api";
 import { colors, radius, space } from "../theme";
+import { WebRecorder, webRecordingSupported } from "./WebRecorder";
 
 const TYPES: { key: string; label: string }[] = [
   { key: "thought", label: "想法" },
@@ -35,6 +36,7 @@ export function Compose({ onCreated }: { onCreated: () => void }) {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [webMode, setWebMode] = useState<"video" | "audio" | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const native = Platform.OS !== "web";
 
@@ -193,11 +195,36 @@ export function Compose({ onCreated }: { onCreated: () => void }) {
 
       <View style={styles.toolbar}>
         <IconBtn label="📷" onPress={pickImages} />
-        {native && <IconBtn label="📸" onPress={takePhoto} />}
-        {native && <IconBtn label="🎬" onPress={recordVideo} />}
-        {native && <IconBtn label="🎤" onPress={startRecording} />}
+        {native ? (
+          <>
+            <IconBtn label="📸" onPress={takePhoto} />
+            <IconBtn label="🎬" onPress={recordVideo} />
+            <IconBtn label="🎤" onPress={startRecording} />
+          </>
+        ) : (
+          webRecordingSupported && (
+            <>
+              <IconBtn label="🎬" onPress={() => setWebMode("video")} />
+              <IconBtn label="🎤" onPress={() => setWebMode("audio")} />
+            </>
+          )
+        )}
         {busy && <ActivityIndicator color={colors.accent} size="small" style={{ marginLeft: 4 }} />}
       </View>
+
+      {webMode && (
+        <WebRecorder
+          mode={webMode}
+          onComplete={(blob, filename) => {
+            const m = webMode;
+            setWebMode(null);
+            const part: UploadFilePart = { uri: "", name: filename, mimeType: blob.type, file: blob };
+            if (m === "video") runUpload({ video: part }, "上传视频");
+            else runUpload({ audio: part }, "上传语音");
+          }}
+          onCancel={() => setWebMode(null)}
+        />
+      )}
 
       <View style={styles.row}>
         <View style={styles.types}>

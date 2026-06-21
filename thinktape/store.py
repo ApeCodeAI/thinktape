@@ -69,7 +69,7 @@ class ItemStore:
 
     def audio_file(self, item_id: str) -> Path | None:
         d = self.item_dir(item_id)
-        for ext in ("opus", "ogg", "mp3", "m4a", "wav"):
+        for ext in ("opus", "ogg", "mp3", "m4a", "wav", "webm"):
             p = d / f"audio.{ext}"
             if p.exists():
                 return p
