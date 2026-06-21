@@ -3,9 +3,27 @@
  * On web (same origin) baseUrl is "" and no key is needed locally; on a phone
  * over LAN, baseUrl + device key are set in Settings and sent on every request.
  */
+import { Platform } from "react-native";
 import { getConn } from "./config";
 
 export type ItemType = "thought" | "bookmark" | "note";
+
+export interface UploadFilePart {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+  /** Web only: the browser File object from expo-image-picker. */
+  file?: any;
+}
+
+export interface UploadParts {
+  content?: string;
+  type?: string;
+  tags?: string[];
+  audio?: UploadFilePart | null;
+  images?: UploadFilePart[];
+  video?: UploadFilePart | null;
+}
 
 export interface Item {
   id: string;
@@ -94,6 +112,47 @@ export const api = {
     return request<ListResponse>(`/api/items?${qs.toString()}`);
   },
   get: (id: string) => request<Item>(`/api/items/${id}`),
+  async upload(parts: UploadParts): Promise<Item> {
+    const fd = new FormData();
+    if (parts.content) fd.append("content", parts.content);
+    if (parts.type) fd.append("type", parts.type);
+    if (parts.tags?.length) fd.append("tags", parts.tags.join(","));
+
+    const appendFile = (field: string, p: UploadFilePart) => {
+      if (Platform.OS === "web" && p.file) {
+        fd.append(field, p.file, p.name);
+      } else {
+        // React Native multipart file descriptor.
+        fd.append(field, {
+          uri: p.uri,
+          name: p.name ?? "upload",
+          type: p.mimeType ?? "application/octet-stream",
+        } as any);
+      }
+    };
+
+    if (parts.audio) appendFile("audio", parts.audio);
+    (parts.images ?? []).forEach((img) => appendFile("images", img));
+    if (parts.video) appendFile("video", parts.video);
+
+    // Do NOT set Content-Type — fetch adds the multipart boundary itself.
+    const res = await fetch(base() + "/api/items/upload", {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: fd,
+    });
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const j = await res.json();
+        if (j?.detail) detail = `${res.status} ${j.detail}`;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return (await res.json()) as Item;
+  },
   create: (body: {
     content: string;
     type?: string;

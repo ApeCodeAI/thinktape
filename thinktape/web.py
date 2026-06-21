@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -56,11 +59,13 @@ def create_app(
     config: Config,
     brain: ThinkTape | None = None,
     summary_worker=None,
+    transcribe_queue=None,
 ) -> FastAPI:
     """Build the FastAPI app. If brain is provided, reuse it (shared with serve mode);
     otherwise create one and manage its lifetime.
 
     summary_worker (optional) — items created via POST /api/items will be enqueued.
+    transcribe_queue (optional) — uploaded audio/video will be queued for transcription.
     """
 
     own_brain = brain is None
@@ -165,6 +170,66 @@ def create_app(
         if summary_worker is not None and item.content.strip():
             summary_worker.enqueue(item.id)
         return _item_to_dict(item)
+
+    @app.post("/api/items/upload")
+    async def upload_item(
+        content: str = Form(""),
+        type: str = Form("thought"),
+        tags: str = Form(""),
+        audio: UploadFile | None = File(None),
+        images: list[UploadFile] | None = File(None),
+        video: UploadFile | None = File(None),
+    ):
+        """Create an item from uploaded media (voice memo, photos, video)."""
+        tmpdir = Path(tempfile.mkdtemp(prefix="tt-upload-"))
+
+        def _ext(filename: str | None, default: str) -> str:
+            return os.path.splitext(filename or "")[1] or default
+
+        def _save(uf: UploadFile, name: str) -> Path:
+            dest = tmpdir / name
+            with dest.open("wb") as f:
+                shutil.copyfileobj(uf.file, f)
+            return dest
+
+        try:
+            audio_path = _save(audio, "audio" + _ext(audio.filename, ".m4a")) if audio else None
+            video_path = _save(video, "video" + _ext(video.filename, ".mp4")) if video else None
+            image_paths: list[Path] = []
+            for i, img in enumerate(images or [], start=1):
+                image_paths.append(_save(img, f"image-{i}" + _ext(img.filename, ".jpg")))
+
+            tag_list = [
+                t.strip().lstrip("#")
+                for t in (tags or "").replace("，", ",").split(",")
+                if t.strip()
+            ]
+            item_type = type if type in ("thought", "bookmark", "note") else "thought"
+            body = content or ""
+            # Voice memo with no text yet → placeholder + queue transcription.
+            if audio_path is not None and not body.strip() and transcribe_queue is not None:
+                body = "[转写中…]"
+
+            item = await brain.add(
+                content=body,
+                type=item_type,
+                source="app",
+                audio_path=audio_path,
+                image_paths=image_paths or None,
+                video_path=video_path,
+                tags=tag_list or None,
+            )
+            if audio_path is not None and transcribe_queue is not None:
+                transcribe_queue.enqueue(item.id)
+            if (
+                summary_worker is not None
+                and item.content.strip()
+                and not item.content.startswith("[转写")
+            ):
+                summary_worker.enqueue(item.id)
+            return _item_to_dict(item)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     @app.patch("/api/items/{item_id}")
     async def update_item(item_id: str, req: UpdateItemRequest):

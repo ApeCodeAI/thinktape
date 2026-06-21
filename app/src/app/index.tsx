@@ -113,6 +113,7 @@ export default function Feed() {
             setQ(target);
             setSubmittedQ(target);
           }}
+          onChanged={refresh}
         />
       )}
       ListEmptyComponent={

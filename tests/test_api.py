@@ -148,6 +148,28 @@ async def test_pair_endpoint_mints_key(client):
     assert data["name"] == "laptop" and len(data["key"]) > 10
 
 
+async def test_upload_item_with_image(client):
+    ac, _ = client
+    files = {"images": ("photo.jpg", b"\xff\xd8\xff\xe0\x00", "image/jpeg")}
+    data = {"content": "带图 #相册", "type": "thought", "tags": "手动"}
+    r = await ac.post("/api/items/upload", files=files, data=data)
+    assert r.status_code == 200
+    d = r.json()
+    assert d["has_images"] is True
+    assert d["source"] == "app"
+    assert set(d["tags"]) >= {"相册", "手动"}
+
+
+async def test_upload_audio_keeps_content_without_queue(client):
+    ac, _ = client
+    files = {"audio": ("memo.m4a", b"\x00\x01\x02\x03", "audio/mp4")}
+    r = await ac.post("/api/items/upload", files=files, data={"content": "语音备注"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["has_audio"] is True
+    assert d["content"] == "语音备注"
+
+
 async def test_healthz(client):
     ac, _ = client
     r = await ac.get("/healthz")

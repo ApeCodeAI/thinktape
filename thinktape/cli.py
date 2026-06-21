@@ -877,7 +877,12 @@ def serve(ctx: click.Context):
             logging.exception("backfill failed")
 
         from .web import create_app
-        app = create_app(config, brain=brain, summary_worker=summary_worker)
+        app = create_app(
+            config,
+            brain=brain,
+            summary_worker=summary_worker,
+            transcribe_queue=transcribe_queue,
+        )
         server_config = uvicorn.Config(
             app,
             host=config.web.host,
