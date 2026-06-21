@@ -39,7 +39,15 @@
       "expo-audio",
       "expo-video",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ThinkTape 需要访问相册来添加图片/视频到你的记录。",
+          "cameraPermission": "ThinkTape 需要使用相机来拍照、录像。",
+          "microphonePermission": "ThinkTape 需要使用麦克风来录音、录像。"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
