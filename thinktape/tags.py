@@ -1,7 +1,8 @@
 """Inline hashtag parsing — #tag extraction from content.
 
-Mirrors links.py: tags are derived from content on the fly, never written
-back to item.yaml. Supports CJK, ASCII word chars, and nested #parent/child.
+Mirrors links.py: hashtags are derived from canonical SQLite content and are
+indexed separately from explicit tags. Supports CJK, ASCII word chars, and
+nested #parent/child.
 """
 from __future__ import annotations
 
@@ -19,8 +20,8 @@ HASHTAG_RE = re.compile(
 def extract_hashtags(content: str) -> list[str]:
     """Extract bare #hashtag names from content (no leading '#').
 
-    De-duplicated while preserving first-seen order, matching the storage
-    shape of Item.tags.
+    De-duplicated while preserving first-seen order for derived indexes and
+    API display; explicit Item.tags remain separately stored in SQLite.
     """
     if not content:
         return []

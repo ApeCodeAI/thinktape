@@ -19,7 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .auth import KEY_HEADER, DeviceKeyStore, is_loopback
 from .config import Config
-from .core import ThinkTape
+from .core import AssetIntegrityError, ThinkTape
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -271,7 +271,10 @@ def create_app(
 
     @app.get("/api/items/{item_id}/audio")
     async def item_audio(item_id: str):
-        path = brain.store.audio_file(item_id)
+        try:
+            path = await brain.media_file(item_id, "audio")
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if path is None:
             raise HTTPException(status_code=404, detail="no audio")
         mt, _ = mimetypes.guess_type(path.name)
@@ -279,7 +282,10 @@ def create_app(
 
     @app.get("/api/items/{item_id}/video")
     async def item_video(item_id: str):
-        path = brain.store.video_file(item_id)
+        try:
+            path = await brain.media_file(item_id, "video")
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if path is None:
             raise HTTPException(status_code=404, detail="no video")
         mt, _ = mimetypes.guess_type(path.name)
@@ -290,8 +296,11 @@ def create_app(
         # Path safety: no slashes/parent refs allowed.
         if "/" in name or ".." in name:
             raise HTTPException(status_code=400, detail="invalid name")
-        path = brain.store.images_dir(item_id) / name
-        if not path.exists():
+        try:
+            path = await brain.image_file(item_id, name)
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if path is None:
             raise HTTPException(status_code=404, detail="image not found")
         mt, _ = mimetypes.guess_type(path.name)
         return FileResponse(path, media_type=mt or "image/jpeg")

@@ -354,7 +354,7 @@ def list_cmd(
 @cli.command()
 @click.argument("item_id")
 @click.option("--content", "raw_content", is_flag=True,
-              help="Output only the raw content.md (no JSON wrapper).")
+              help="Output only the raw canonical content (no JSON wrapper).")
 @click.option("--human", is_flag=True)
 @click.pass_context
 def get(ctx: click.Context, item_id: str, raw_content: bool, human: bool):
@@ -518,8 +518,7 @@ def delete(ctx: click.Context, item_id: str, force: bool):
         if existing is None:
             return False
         if force:
-            await brain.index.delete(item_id)
-            return await brain.store.hard_delete(item_id)
+            return await brain.hard_delete(item_id)
         return await brain.delete(item_id)
 
     ok = _run(run, ctx)
@@ -728,7 +727,7 @@ def summarize(ctx: click.Context, item_id: str | None, all_items: bool, force: b
             try:
                 r = await summarizer.summarize_and_tag(it.content)
                 # Merge onto explicit tags only (brain.list returns the union);
-                # inline #hashtags stay derived, not baked into item.yaml.
+                # inline #hashtags stay derived, not stored as explicit DB tags.
                 base = await brain.get(it.id)
                 base_tags = base.tags if base else it.tags
                 merged = list(dict.fromkeys(base_tags + r.get("tags", [])))
@@ -816,7 +815,7 @@ def web(ctx: click.Context):
 @cli.command(name="rebuild-index")
 @click.pass_context
 def rebuild_index(ctx: click.Context):
-    """Rebuild the SQLite index from items/."""
+    """Rebuild derived search/link/tag indexes from canonical SQLite rows."""
     config = ctx.obj["config"]
 
     async def _run_rebuild():
@@ -829,6 +828,26 @@ def rebuild_index(ctx: click.Context):
             await brain.close()
 
     asyncio.run(_run_rebuild())
+
+
+@cli.command(name="migrate-legacy")
+@click.option(
+    "--dry-run/--apply", default=True, show_default=True,
+    help="Inspect only, or apply the non-destructive legacy import.",
+)
+@click.pass_context
+def migrate_legacy(ctx: click.Context, dry_run: bool):
+    """Import legacy items/ YAML, Markdown, and media into SQLite/assets."""
+    config = ctx.obj["config"]
+
+    async def run():
+        brain = ThinkTape(config)
+        return await brain.migrate_legacy(dry_run=dry_run)
+
+    report = asyncio.run(run())
+    _print_json(report)
+    if not report["ok"]:
+        raise click.exceptions.Exit(1)
 
 
 @cli.command()

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from thinktape.core import ThinkTape
+from thinktape.index import IndexDB
 
 
 async def test_add_and_list(brain: ThinkTape):
@@ -75,14 +76,13 @@ async def test_inline_and_explicit_union_in_stats_and_all_tags(brain: ThinkTape)
     assert set(await brain.all_tags()) >= {"工作", "生活", "手动"}
 
 
-async def test_yaml_keeps_explicit_tags_only(brain: ThinkTape):
-    item = await brain.add("派生 #工作 不写回 yaml", tags=["手动"])
-    # The on-disk source of truth keeps only explicit tags...
-    on_disk = await brain.store.get(item.id)
-    assert on_disk.tags == ["手动"]
-    # ...while the index/list view exposes the union.
+async def test_sqlite_keeps_explicit_tags_and_list_exposes_derived_union(brain: ThinkTape):
+    item = await brain.add("派生 #工作", tags=["手动"])
+    canonical = await brain.get(item.id)
+    assert canonical is not None and canonical.tags == ["手动"]
     listed = await brain.list(tag="工作")
     assert len(listed) == 1
+    assert listed[0].tags == ["手动", "工作"]
 
 
 async def test_editing_content_updates_derived_tags(brain: ThinkTape):
@@ -104,12 +104,16 @@ async def test_soft_delete_excluded(brain: ThinkTape):
 async def test_rebuild_index(brain: ThinkTape):
     a = await brain.add("alpha")
     b = await brain.add("beta")
-    # Clear the index by hand then rebuild from files.
-    await brain.index.db.execute("DELETE FROM items")
+    # Rebuild only derived query state from canonical SQLite item rows.
     await brain.index.db.execute("DELETE FROM items_fts")
+    await brain.index.db.execute("DELETE FROM item_tags")
     await brain.index.db.commit()
-    assert (await brain.list()) == []
+    assert await brain.search("alpha") == []
     n = await brain.rebuild_index()
     assert n == 2
-    items = await brain.list()
+    items = await brain.search("alpha") + await brain.search("beta")
     assert {i.id for i in items} == {a.id, b.id}
+
+
+def test_destructive_index_rebuild_is_not_public():
+    assert not hasattr(IndexDB, "rebuild")

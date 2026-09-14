@@ -1,7 +1,7 @@
 """Faster-whisper transcription worker.
 
-Runs as a background task. Items whose content.md is empty and have audio/video
-get transcribed; the transcript replaces content.md and the index is updated.
+Runs as a background task. Pending SQLite items with audio/video assets are
+transcribed and their canonical SQLite content is updated.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .config import TranscribeConfig
 from .core import ThinkTape
-from .models import Item
+
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,15 @@ class TranscribeQueue:
         if item is None:
             log.warning("transcribe: item %s not found", item_id)
             return
-        audio = self.brain.store.audio_file(item_id) or self.brain.store.video_file(item_id)
+        try:
+            audio = (
+                await self.brain.media_file(item_id, "audio")
+                or await self.brain.media_file(item_id, "video")
+            )
+        except Exception as e:
+            log.exception("transcribe asset error: %s", e)
+            await self.brain.update(item_id, content=f"[转写失败: {e}]")
+            return
         if audio is None:
             return
         # Don't re-transcribe items that already have content.
@@ -119,14 +127,11 @@ class TranscribeQueue:
     async def backfill_pending(self) -> int:
         """Re-enqueue any audio/video items whose content is empty or marked transcribing."""
         n = 0
-        for item_id in self.brain.store.iter_ids():
-            item: Item | None = await self.brain.store.get(item_id)
-            if item is None:
-                continue
+        for item in await self.brain.list(status="active", limit=1000):
             if not (item.has_audio or item.has_video):
                 continue
             if item.content and not item.content.startswith("[转写中"):
                 continue
-            self.enqueue(item_id)
+            self.enqueue(item.id)
             n += 1
         return n

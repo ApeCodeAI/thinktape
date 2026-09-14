@@ -1,94 +1,52 @@
-"""Tests for ItemStore."""
+"""Tests for immutable assets and the read-only legacy adapter."""
 from __future__ import annotations
 
-import asyncio
 import re
 from pathlib import Path
-
-import pytest
-import yaml
 
 from thinktape.store import ItemStore, generate_id
 
 
-async def test_create_thought(tmp_path: Path):
+def test_legacy_store_is_read_only_and_does_not_create_tree(tmp_path: Path):
+    items_dir = tmp_path / "items"
+    store = ItemStore(items_dir)
+
+    assert not items_dir.exists()
+    assert not hasattr(store, "create")
+    assert not hasattr(store, "update")
+    assert not hasattr(store, "delete")
+    assert not hasattr(store, "hard_delete")
+
+
+def test_legacy_store_discovers_only_valid_item_directories(tmp_path: Path):
+    items_dir = tmp_path / "items"
+    valid_ids = ["20250102-030405-abcd", "20250101-030405-1234"]
+    for item_id in valid_ids:
+        (items_dir / item_id).mkdir(parents=True)
+    (items_dir / "not-an-item").mkdir()
+    (items_dir / "20250103-030405-beef").write_text("not a directory")
+
+    store = ItemStore(items_dir)
+    assert list(store.iter_ids()) == sorted(valid_ids)
+
+
+def test_legacy_media_discovery_is_read_only(tmp_path: Path):
+    item_id = "20250102-030405-abcd"
+    item_dir = tmp_path / "items" / item_id
+    images = item_dir / "images"
+    images.mkdir(parents=True)
+    (item_dir / "audio.ogg").write_bytes(b"audio")
+    (item_dir / "video.mp4").write_bytes(b"video")
+    (images / "002.png").write_bytes(b"two")
+    (images / "001.jpg").write_bytes(b"one")
+
     store = ItemStore(tmp_path / "items")
-    item = await store.create(content="hello world", type="thought")
-
-    assert re.match(r"^\d{8}-\d{6}-[0-9a-f]{4}$", item.id)
-    yaml_file = store.yaml_path(item.id)
-    content_file = store.content_path(item.id)
-    assert yaml_file.exists()
-    assert content_file.exists()
-    assert content_file.read_text() == "hello world"
-
-    with yaml_file.open() as f:
-        data = yaml.safe_load(f)
-    assert data["id"] == item.id
-    assert data["type"] == "thought"
-    assert data["status"] == "active"
-    assert data["has_audio"] is False
+    assert store.audio_file(item_id).name == "audio.ogg"
+    assert store.video_file(item_id).name == "video.mp4"
+    assert [path.name for path in store.image_files(item_id)] == ["001.jpg", "002.png"]
 
 
-async def test_get_round_trip(tmp_path: Path):
-    store = ItemStore(tmp_path / "items")
-    item = await store.create(content="round trip", tags=["a", "b"])
-    again = await store.get(item.id)
-    assert again is not None
-    assert again.content == "round trip"
-    assert again.tags == ["a", "b"]
-
-
-async def test_update_content_and_tags(tmp_path: Path):
-    store = ItemStore(tmp_path / "items")
-    item = await store.create(content="v1")
-    await asyncio.sleep(0.01)
-    updated = await store.update(item.id, content="v2", tags=["new"])
-    assert updated.content == "v2"
-    assert updated.tags == ["new"]
-    assert updated.updated_at >= item.created_at
-
-
-async def test_soft_delete(tmp_path: Path):
-    store = ItemStore(tmp_path / "items")
-    item = await store.create(content="bye")
-    assert await store.delete(item.id) is True
-    again = await store.get(item.id)
-    assert again is not None and again.status == "deleted"
-
-
-async def test_audio_copy(tmp_path: Path):
-    src = tmp_path / "src.opus"
-    src.write_bytes(b"OggS-fake")
-    store = ItemStore(tmp_path / "items")
-    item = await store.create(content="", audio_path=src)
-    assert item.has_audio
-    assert store.audio_file(item.id) is not None
-
-
-async def test_image_copy(tmp_path: Path):
-    src1 = tmp_path / "a.jpg"
-    src2 = tmp_path / "b.png"
-    src1.write_bytes(b"\xff\xd8\xff\xe0")
-    src2.write_bytes(b"\x89PNG")
-    store = ItemStore(tmp_path / "items")
-    item = await store.create(content="pic", image_paths=[src1, src2])
-    assert item.has_images
-    files = store.image_files(item.id)
-    assert len(files) == 2
-    assert files[0].name == "001.jpg"
-    assert files[1].name == "002.png"
-
-
-def test_generate_id_unique():
+def test_generate_id_unique_and_well_formed():
     ids = {generate_id() for _ in range(100)}
-    # 100 ids in the same second should yield 100 unique values (4-hex random).
     assert len(ids) > 95
-
-
-async def test_iter_ids_sorted(tmp_path: Path):
-    store = ItemStore(tmp_path / "items")
-    for _ in range(3):
-        await store.create(content="x")
-    ids = list(store.iter_ids())
-    assert ids == sorted(ids)
+    assert all(re.match(r"^\d{8}-\d{6}-[0-9a-f]{4}$", item_id) for item_id in ids)
