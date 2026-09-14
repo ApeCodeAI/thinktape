@@ -183,7 +183,9 @@ async def test_healthz(client):
 async def test_http_migration_endpoint_is_not_exposed(client):
     ac, _ = client
     response = await ac.post("/api/migrate-legacy")
-    assert response.status_code == 404
+    # Starlette may report either no matching path or method-not-allowed when
+    # another non-POST route shares the path shape. Both prove no write API exists.
+    assert response.status_code in {404, 405}
 
 
 async def test_image_serving(client, tmp_path):
