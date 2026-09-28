@@ -765,10 +765,10 @@ def show_config(ctx: click.Context):
 @click.option("--human", is_flag=True)
 @click.pass_context
 def pair(ctx: click.Context, name: str, human: bool):
-    """Pair a new device — mints a device key for remote (e.g. phone) access.
+    """Provision a device key on the trusted host for remote access.
 
-    Once any device is paired, remote clients must send the key in the
-    X-ThinkTape-Key header. The local machine (loopback) is always trusted.
+    Remote API access always requires X-ThinkTape-Key. The HTTP pairing
+    endpoint additionally requires an existing key, including on loopback.
     """
     config = ctx.obj["config"]
     store = DeviceKeyStore(config.data_dir)
@@ -791,7 +791,7 @@ def devices(ctx: click.Context, human: bool):
     devs = store.list_public()
     if human:
         if not devs:
-            click.echo("尚无配对设备（远程访问当前不需要 Key）。")
+            click.echo("尚无配对设备（远程 API 需先在本机运行 thinktape pair）。")
         for d in devs:
             click.echo(f"{d['name']}  {d['key_preview']}")
     else:

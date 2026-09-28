@@ -29,7 +29,7 @@ The ID uses a twelve-digit random suffix, **not a UUID**. The local timestamp mu
 ## Import and configure on the iPhone
 
 1. In **Files → On My iPhone**, create `录音/待上传` and `录音/已上传`. Do not use iCloud Drive for the pending folder.
-2. Pair the phone **from the trusted Mac's loopback interface** using `POST /api/pair` (JSON body `{"name":"iphone-action-button"}`), or use an existing privately provisioned phone key. The Mac stores the key outside this repository; transfer it to the iPhone privately. Never paste the real key or private URL into a public issue, chat, or repository. The HTTP header is `X-ThinkTape-Key`. The pairing endpoint itself is not exposed to remote clients.
+2. Provision the first phone key **on the trusted host** with `thinktape pair --name iphone-action-button`, or reuse an existing privately provisioned phone key. `POST /api/pair` requires an existing key and cannot bootstrap access. Transfer the key to the iPhone privately; never paste it or the private URL into a public issue or repository. The header is `X-ThinkTape-Key`. The public signed shortcuts contain only blank prompts.
 3. Download each **signed** `.shortcut` file to the iPhone and import both in Shortcuts. For **each** import, answer the four setup questions:
    - Select the appropriate `WFFolder` for `待上传` (record: **Save File**; retry: **Get Contents of Folder**).
    - Enter the ThinkTape **HTTPS base URL with no trailing slash**, excluding `/api/recordings` (both shortcuts). The latter path is appended automatically.
