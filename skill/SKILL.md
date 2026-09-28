@@ -14,7 +14,7 @@ description: >-
 
 ThinkTape is the user's Voice & Video First personal raw-material library.
 Voice and video are the primary input — local Whisper auto-transcribes.
-Original media files are preserved forever (content.md is the transcript, audio/video is the truth).
+Canonical content and metadata live in SQLite. Original media is copied into application-read-only immutable assets and checksum-verified before use.
 Supports [[wikilinks]] for bi-directional linking between items.
 
 **When to use this skill:**
@@ -118,16 +118,17 @@ $ thinktape get 20260619-2150 --content
 
 ## Data Structure
 
-Each item is a self-contained directory:
+Canonical storage is SQLite plus immutable assets:
 ```
-~/thinktape-data/items/20260619-215030-a3f8/
-  item.yaml      # Metadata (type, tags, timestamps)
-  content.md     # The actual content (Markdown)
-  audio.opus     # Voice recording (optional)
-  images/        # Photos (optional)
+~/thinktape-data/
+  thinktape.db                    # canonical content, metadata, asset records, storage marker
+  assets/20260619-215030-a3f8/    # application-read-only media
+    audio.opus
+    001.jpg
+  items/                          # legacy migration input only
 ```
 
-**Data is permanent. Code is temporary.** Items survive any code rewrite.
+Legacy `items/` storage is never imported implicitly. Run `thinktape migrate-legacy --dry-run`, resolve every reported issue, then run `thinktape migrate-legacy --apply`. Normal startup refuses legacy or unmarked storage until migration succeeds. `rebuild-index` rebuilds only derived FTS, tag, and link indexes from canonical SQLite rows.
 
 ## Common Agent Patterns
 
@@ -163,6 +164,7 @@ thinktape search "产品想法" | jq -r '.items[].content' | llm "总结共同�
 ## Important Notes
 
 - Always use `thinktape add` (not direct file writes) — it maintains the SQLite index
+- Never modify files below `assets/`; ThinkTape treats them as immutable and verifies checksums before serving or transcribing
 - Default type is `thought` — only specify `--type` when it's clearly a bookmark or note
 - Tags are optional but helpful for retrieval — add 1-3 relevant tags
 - Content should be in the user's own words / the user's perspective

@@ -2,28 +2,40 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { Hashtag, splitHashtags } from "./Hashtag";
 import { Wikilink, type WikilinkKind, splitWikilinks } from "./Wikilink";
 
 interface Props {
   children: string;
   onWikilinkClick: (target: string, kind: WikilinkKind) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 /**
- * Markdown renderer that turns [[wikilinks]] into clickable pills.
+ * Markdown renderer that turns [[wikilinks]] and #hashtags into clickable pills.
  *
- * Implementation: intercepts every text node and splits it on [[…]] using a
- * regex. Code blocks render via the `code` component path and are left intact.
+ * Implementation: intercepts every text node and splits it on [[…]], then
+ * splits the remaining text on #tags. Code blocks render via the `code`
+ * component path and are left intact.
  */
-export function Markdown({ children, onWikilinkClick }: Props) {
+export function Markdown({ children, onWikilinkClick, onTagClick }: Props) {
+  const renderTagged = (value: string, keyPrefix: string) =>
+    splitHashtags(value).map((seg, j) =>
+      seg.kind === "text" ? (
+        <React.Fragment key={`${keyPrefix}-${j}`}>{seg.value}</React.Fragment>
+      ) : (
+        <Hashtag key={`${keyPrefix}-${j}`} tag={seg.tag} onClick={onTagClick} />
+      ),
+    );
+
   const renderText = (value: string) => {
     const parts = splitWikilinks(value);
     if (parts.length <= 1 && parts[0]?.kind === "text") {
-      return parts[0].value;
+      return renderTagged(parts[0]?.value ?? "", "t0");
     }
     return parts.map((p, i) =>
       p.kind === "text" ? (
-        <React.Fragment key={i}>{p.value}</React.Fragment>
+        <React.Fragment key={i}>{renderTagged(p.value, `t${i}`)}</React.Fragment>
       ) : (
         <Wikilink
           key={i}

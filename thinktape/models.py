@@ -6,9 +6,26 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .tags import extract_hashtags
+
 ItemType = Literal["thought", "bookmark", "note"]
 ItemStatus = Literal["active", "archived", "deleted"]
-ItemSource = Literal["telegram", "web", "cli", "api"]
+ItemSource = Literal["telegram", "web", "cli", "api", "app"]
+AssetKind = Literal["audio", "video", "image"]
+
+
+class Asset(BaseModel):
+    """An immutable media file referenced by SQLite."""
+
+    id: int | None = None
+    item_id: str
+    path: str
+    kind: AssetKind
+    sha256: str
+    byte_size: int
+    mime_type: str | None = None
+    original_filename: str | None = None
+    created_at: datetime
 
 
 class Item(BaseModel):
@@ -30,12 +47,27 @@ class Item(BaseModel):
     has_images: bool = False
     has_video: bool = False
 
-    # Not stored in item.yaml — populated when reading.
+    # Content is canonical in SQLite; image names are derived from asset rows.
     content: str = ""
     images: list[str] = Field(default_factory=list)
 
+    @property
+    def all_tags(self) -> list[str]:
+        """Explicit tags unioned with #hashtags parsed from content.
+
+        First-seen order, de-duplicated. Used for indexing and display;
+        SQLite persists the explicit tags alongside canonical content.
+        """
+        out: list[str] = []
+        seen: set[str] = set()
+        for tag in (*self.tags, *extract_hashtags(self.content)):
+            if tag and tag not in seen:
+                seen.add(tag)
+                out.append(tag)
+        return out
+
     def to_yaml_dict(self) -> dict:
-        """Serialize for item.yaml (excludes content and images list)."""
+        """Serialize for the read-only legacy migration adapter."""
         return {
             "id": self.id,
             "created_at": self.created_at.isoformat(),

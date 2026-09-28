@@ -6,7 +6,7 @@ ThinkTape 是一个 **Voice & Video First** 的个人思维录音带。AI-native
 
 语音和视频是第一输入方式，文字是次要的。用户通过 Telegram Bot、Web UI 或 CLI 随手 dump 语音、视频、图片、文字、链接，AI 自动转写和摘要，任何 Agent 都可以通过 CLI 直接调用。
 
-**核心原则：数据永久保留，代码随时可换。原始媒体文件是真相，content.md 是转写产物。**
+**核心原则：数据永久保留，代码随时可换。SQLite 是内容、元数据和媒体记录的唯一事实来源；`assets/` 保存不可变原始媒体。**
 
 ## 必读
 
@@ -26,8 +26,8 @@ ThinkTape 是一个 **Voice & Video First** 的个人思维录音带。AI-native
 thinktape/
   __init__.py
   core.py          # ThinkTape 类 — 核心业务逻辑
-  store.py         # ItemStore — 文件读写 (items/)
-  index.py         # IndexDB — SQLite 索引
+  store.py         # AssetStore + 只读旧版 items/ 迁移适配器
+  index.py         # IndexDB — SQLite 主存储及派生索引
   bot.py           # Telegram Bot
   transcribe.py    # 语音转写
   web.py           # FastAPI server + API routes
@@ -70,7 +70,7 @@ DESIGN.md
 ```bash
 uv run thinktape serve    # 启动全部 (bot + web + transcriber)
 uv run thinktape web      # 只启动 web
-uv run thinktape rebuild-index  # 从 items/ 重建 SQLite 索引
+uv run thinktape rebuild-index  # 从 SQLite 主记录重建搜索/标签/链接索引
 ```
 
 ## Web UI 设计要求

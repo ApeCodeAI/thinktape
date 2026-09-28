@@ -1,21 +1,27 @@
 """FastAPI web server."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
+import os
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from .auth import KEY_HEADER, DeviceKeyStore, is_loopback
 from .config import Config
-from .core import ThinkTape
+from .core import AssetIntegrityError, ThinkTape
+from .index import RecordingConflictError
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -24,6 +30,9 @@ log = logging.getLogger(__name__)
 def _item_to_dict(item: Item) -> dict[str, Any]:
     d = item.model_dump(mode="json")
     # frontend wants timestamp strings as-is; pydantic v2 model_dump(json) already does it.
+    # Expose the union of explicit tags + inline #hashtags so every response
+    # (including store-sourced GET) shows hashtags typed into the body.
+    d["tags"] = item.all_tags
     d["images"] = item.images
     return d
 
@@ -44,15 +53,21 @@ class UpdateItemRequest(BaseModel):
     type: str | None = None
 
 
+class PairRequest(BaseModel):
+    name: str = "device"
+
+
 def create_app(
     config: Config,
     brain: ThinkTape | None = None,
     summary_worker=None,
+    transcribe_queue=None,
 ) -> FastAPI:
     """Build the FastAPI app. If brain is provided, reuse it (shared with serve mode);
     otherwise create one and manage its lifetime.
 
     summary_worker (optional) — items created via POST /api/items will be enqueued.
+    transcribe_queue (optional) — uploaded audio/video will be queued for transcription.
     """
 
     own_brain = brain is None
@@ -71,6 +86,24 @@ def create_app(
 
     app = FastAPI(title="thinktape", version="2.0.0", lifespan=lifespan)
 
+    key_store = DeviceKeyStore(config.data_dir)
+
+    async def _device_key_auth(request: Request, call_next):
+        # Local machine is always trusted. Remote clients need a paired key
+        # only once at least one device exists — so existing setups are unaffected.
+        if request.url.path.startswith("/api/"):
+            if request.url.path == "/api/recordings" or request.url.path.startswith("/api/recordings/"):
+                if not key_store.verify(request.headers.get(KEY_HEADER)):
+                    return JSONResponse({"detail": "unauthorized device"}, status_code=401)
+            else:
+                client_host = request.client.host if request.client else None
+                if not is_loopback(client_host) and not key_store.is_empty():
+                    if not key_store.verify(request.headers.get(KEY_HEADER)):
+                        return JSONResponse({"detail": "unauthorized device"}, status_code=401)
+        return await call_next(request)
+
+    # Auth added first (inner); CORS added last (outer) so 401s keep CORS headers.
+    app.add_middleware(BaseHTTPMiddleware, dispatch=_device_key_auth)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -144,6 +177,126 @@ def create_app(
             summary_worker.enqueue(item.id)
         return _item_to_dict(item)
 
+    @app.post("/api/items/upload")
+    async def upload_item(
+        content: str = Form(""),
+        type: str = Form("thought"),
+        tags: str = Form(""),
+        audio: UploadFile | None = File(None),
+        images: list[UploadFile] | None = File(None),
+        video: UploadFile | None = File(None),
+    ):
+        """Create an item from uploaded media (voice memo, photos, video)."""
+        tmpdir = Path(tempfile.mkdtemp(prefix="tt-upload-"))
+
+        def _ext(filename: str | None, default: str) -> str:
+            return os.path.splitext(filename or "")[1] or default
+
+        def _save(uf: UploadFile, name: str) -> Path:
+            dest = tmpdir / name
+            with dest.open("wb") as f:
+                shutil.copyfileobj(uf.file, f)
+            return dest
+
+        try:
+            audio_path = _save(audio, "audio" + _ext(audio.filename, ".m4a")) if audio else None
+            video_path = _save(video, "video" + _ext(video.filename, ".mp4")) if video else None
+            image_paths: list[Path] = []
+            for i, img in enumerate(images or [], start=1):
+                image_paths.append(_save(img, f"image-{i}" + _ext(img.filename, ".jpg")))
+
+            tag_list = [
+                t.strip().lstrip("#")
+                for t in (tags or "").replace("，", ",").split(",")
+                if t.strip()
+            ]
+            item_type = type if type in ("thought", "bookmark", "note") else "thought"
+            body = content or ""
+            # Voice memo with no text yet → placeholder + queue transcription.
+            if audio_path is not None and not body.strip() and transcribe_queue is not None:
+                body = "[转写中…]"
+
+            item = await brain.add(
+                content=body,
+                type=item_type,
+                source="app",
+                audio_path=audio_path,
+                image_paths=image_paths or None,
+                video_path=video_path,
+                tags=tag_list or None,
+            )
+            if audio_path is not None and transcribe_queue is not None:
+                transcribe_queue.enqueue(item.id)
+            if (
+                summary_worker is not None
+                and item.content.strip()
+                and not item.content.startswith("[转写")
+            ):
+                summary_worker.enqueue(item.id)
+            return _item_to_dict(item)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _recording_response(recording: dict, item: Item) -> dict:
+        return {**_item_to_dict(item), **recording, "stored": True}
+
+    @app.post("/api/recordings")
+    async def upload_recording(
+        recording_id: str = Form(...),
+        audio: UploadFile = File(...),
+        content: str = Form(""),
+    ):
+        extension = Path(audio.filename or "").suffix.lower()
+        if extension not in {".m4a", ".wav", ".mp3", ".aac", ".caf", ".ogg", ".opus", ".flac"}:
+            raise HTTPException(status_code=422, detail="unsupported audio filename extension")
+        with tempfile.TemporaryDirectory(prefix="tt-recording-") as directory:
+            path = Path(directory) / ("audio" + extension)
+            def save_upload():
+                with path.open("wb") as output:
+                    shutil.copyfileobj(audio.file, output)
+            await asyncio.to_thread(save_upload)
+            try:
+                result = await brain.ingest_recording(recording_id, path, content=content)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except RecordingConflictError as exc:
+                raise HTTPException(status_code=409, detail=f"recording_id conflict: {exc}") from exc
+            except AssetIntegrityError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        recording = result.recording
+        if transcribe_queue is not None and recording["transcription_status"] == "pending":
+            recording = await brain.queue_recording(recording_id)
+            assert recording is not None
+            transcribe_queue.enqueue(result.item.id)
+        return _recording_response(recording, result.item)
+
+    @app.get("/api/recordings/{recording_id}")
+    async def get_recording(recording_id: str):
+        recording = await brain.get_recording(recording_id)
+        if recording is None:
+            raise HTTPException(status_code=404, detail="recording not found")
+        item = await brain.get(recording["item_id"])
+        if item is None:
+            raise HTTPException(status_code=409, detail="recording item unavailable")
+        return _recording_response(recording, item)
+
+    @app.post("/api/recordings/{recording_id}/retry")
+    async def retry_recording(recording_id: str):
+        try:
+            recording = await brain.retry_recording(
+                recording_id, worker_available=transcribe_queue is not None,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if recording is None:
+            raise HTTPException(status_code=404, detail="recording not found")
+        if transcribe_queue is not None and recording["transcription_status"] == "queued":
+            transcribe_queue.enqueue(recording["item_id"])
+        item = await brain.get(recording["item_id"])
+        if item is None:
+            raise HTTPException(status_code=409, detail="recording item unavailable")
+        return _recording_response(recording, item)
+
     @app.patch("/api/items/{item_id}")
     async def update_item(item_id: str, req: UpdateItemRequest):
         changes = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
@@ -168,6 +321,15 @@ def create_app(
     async def tags():
         return {"tags": await brain.all_tags()}
 
+    @app.get("/api/devices")
+    async def list_devices():
+        return {"devices": key_store.list_public(), "auth_active": not key_store.is_empty()}
+
+    @app.post("/api/pair")
+    async def pair_device(req: PairRequest):
+        entry = key_store.add(req.name)
+        return {"name": entry["name"], "key": entry["key"]}
+
     @app.post("/api/rebuild-index")
     async def rebuild_index():
         n = await brain.rebuild_index()
@@ -175,7 +337,10 @@ def create_app(
 
     @app.get("/api/items/{item_id}/audio")
     async def item_audio(item_id: str):
-        path = brain.store.audio_file(item_id)
+        try:
+            path = await brain.media_file(item_id, "audio")
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if path is None:
             raise HTTPException(status_code=404, detail="no audio")
         mt, _ = mimetypes.guess_type(path.name)
@@ -183,7 +348,10 @@ def create_app(
 
     @app.get("/api/items/{item_id}/video")
     async def item_video(item_id: str):
-        path = brain.store.video_file(item_id)
+        try:
+            path = await brain.media_file(item_id, "video")
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if path is None:
             raise HTTPException(status_code=404, detail="no video")
         mt, _ = mimetypes.guess_type(path.name)
@@ -194,8 +362,11 @@ def create_app(
         # Path safety: no slashes/parent refs allowed.
         if "/" in name or ".." in name:
             raise HTTPException(status_code=400, detail="invalid name")
-        path = brain.store.images_dir(item_id) / name
-        if not path.exists():
+        try:
+            path = await brain.image_file(item_id, name)
+        except AssetIntegrityError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if path is None:
             raise HTTPException(status_code=404, detail="image not found")
         mt, _ = mimetypes.guess_type(path.name)
         return FileResponse(path, media_type=mt or "image/jpeg")
@@ -205,39 +376,41 @@ def create_app(
         return {"ok": True, "ts": datetime.now(timezone.utc).isoformat()}
 
     # ---------- Static frontend ----------
+    # Prefer the new Expo universal web build; fall back to the legacy Vite web.
+    repo_root = Path(__file__).resolve().parent.parent
+    web_dist = repo_root / "app" / "dist"
+    if not (web_dist / "index.html").exists():
+        web_dist = repo_root / "frontend" / "dist"
+    web_dist = web_dist.resolve()
+    index_file = web_dist / "index.html"
 
-    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if frontend_dist.exists():
-        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    if index_file.exists():
 
         @app.get("/")
         async def index():
-            return FileResponse(frontend_dist / "index.html")
+            return FileResponse(index_file)
 
-        @app.get("/favicon.svg")
-        async def favicon():
-            p = frontend_dist / "favicon.svg"
-            if p.exists():
-                return FileResponse(p)
-            raise HTTPException(status_code=404)
-
-        # SPA fallback for client-side routes
+        # Serve any built static asset; fall back to index.html for client routes.
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
             if full_path.startswith("api/"):
                 raise HTTPException(status_code=404)
-            # serve file if it exists in dist root
-            candidate = frontend_dist / full_path
-            if candidate.exists() and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(frontend_dist / "index.html")
+            candidate = (web_dist / full_path).resolve()
+            # Path-traversal guard: candidate must stay within web_dist.
+            if web_dist == candidate or web_dist in candidate.parents:
+                if candidate.is_file():
+                    return FileResponse(candidate)
+                html = (web_dist / f"{full_path}.html").resolve()
+                if html.is_file() and web_dist in html.parents:
+                    return FileResponse(html)
+            return FileResponse(index_file)
     else:
         @app.get("/")
         async def index_placeholder():
             return JSONResponse(
                 {
                     "ok": True,
-                    "message": "thinktape web — frontend not built yet. Run `cd frontend && npm install && npm run build`.",
+                    "message": "thinktape web — frontend not built yet. Run `cd app && npx expo export -p web` (or build the legacy frontend).",
                 }
             )
 

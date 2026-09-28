@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "ThinkTape",
+    "slug": "thinktape",
+    "version": "2.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "thinktape",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "android": {
+      "package": "ai.apecode.thinktape",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "android": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 76
+          }
+        }
+      ],
+      "expo-audio",
+      "expo-video",
+      "expo-secure-store",
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ThinkTape 需要访问相册来添加图片/视频到你的记录。",
+          "cameraPermission": "ThinkTape 需要使用相机来拍照、录像。",
+          "microphonePermission": "ThinkTape 需要使用麦克风来录音、录像。"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a88fc8b7-68ff-49b0-aedb-d2709b54e9e4"
+      }
+    },
+    "owner": "chaofa"
+  }
+}

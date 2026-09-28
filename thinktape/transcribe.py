@@ -1,7 +1,7 @@
 """Faster-whisper transcription worker.
 
-Runs as a background task. Items whose content.md is empty and have audio/video
-get transcribed; the transcript replaces content.md and the index is updated.
+Runs as a background task. Pending SQLite items with audio/video assets are
+transcribed and their canonical SQLite content is updated.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .config import TranscribeConfig
 from .core import ThinkTape
-from .models import Item
+
 
 log = logging.getLogger(__name__)
 
@@ -93,11 +93,23 @@ class TranscribeQueue:
                 log.exception("transcribe failed for %s", item_id)
 
     async def _process(self, item_id: str) -> None:
+        recording = await self.brain.index.get_recording_for_item(item_id)
+        if recording is not None:
+            await self._process_recording(recording)
+            return
         item = await self.brain.get(item_id)
         if item is None:
             log.warning("transcribe: item %s not found", item_id)
             return
-        audio = self.brain.store.audio_file(item_id) or self.brain.store.video_file(item_id)
+        try:
+            audio = (
+                await self.brain.media_file(item_id, "audio")
+                or await self.brain.media_file(item_id, "video")
+            )
+        except Exception as e:
+            log.exception("transcribe asset error: %s", e)
+            await self.brain.update(item_id, content=f"[转写失败: {e}]")
+            return
         if audio is None:
             return
         # Don't re-transcribe items that already have content.
@@ -116,17 +128,64 @@ class TranscribeQueue:
         await self.brain.update(item_id, content=text)
         log.info("transcribed %s -> %d chars", item_id, len(text))
 
+    async def _process_recording(self, recording: dict) -> None:
+        recording_id = recording["recording_id"]
+        item_id = recording["item_id"]
+        if recording["transcription_status"] != "queued":
+            return
+        claimed = await self.brain.start_recording_transcription(recording_id)
+        if claimed is None or claimed["transcription_status"] != "running":
+            return
+        try:
+            item = await self.brain.get(item_id)
+            if item is None or item.status != "active":
+                raise RuntimeError("recording item unavailable")
+            audio = await self.brain.media_file(item_id, "audio")
+            if audio is None:
+                raise RuntimeError("recording audio unavailable")
+            # A user edit wins over an in-flight transcription.
+            if item.content and not item.content.startswith("[转写中"):
+                await self.brain.finish_recording_transcription(recording_id)
+                return
+            text = await self.transcriber.transcribe(audio)
+            await self.brain.update_content_if_pending(item_id, text or "[空音频]")
+        except asyncio.CancelledError:
+            # The running receipt survives and is picked up by backfill after restart.
+            raise
+        except Exception as exc:
+            log.exception("transcribe failed for recording %s", recording_id)
+            await self.brain.finish_recording_transcription(recording_id, error=str(exc))
+            return
+        await self.brain.finish_recording_transcription(recording_id)
+
     async def backfill_pending(self) -> int:
-        """Re-enqueue any audio/video items whose content is empty or marked transcribing."""
+        """Recover bounded recording jobs and legacy audio jobs after restart."""
+        from .core import MAX_TRANSCRIPTION_ATTEMPTS
+
         n = 0
-        for item_id in self.brain.store.iter_ids():
-            item: Item | None = await self.brain.store.get(item_id)
-            if item is None:
+        for recording in await self.brain.index.list_recordings(
+            ["pending", "queued", "running", "failed"]
+        ):
+            if recording["attempts"] >= MAX_TRANSCRIPTION_ATTEMPTS:
+                if recording["transcription_status"] != "failed":
+                    await self.brain.index.update_recording_status(
+                        recording["recording_id"], "failed",
+                        last_error="transcription retry limit reached",
+                    )
+                continue
+            if recording["transcription_status"] != "queued":
+                await self.brain.index.update_recording_status(
+                    recording["recording_id"], "queued",
+                )
+            self.enqueue(recording["item_id"])
+            n += 1
+        for item in await self.brain.list(status="active", limit=1000):
+            if await self.brain.index.get_recording_for_item(item.id) is not None:
                 continue
             if not (item.has_audio or item.has_video):
                 continue
             if item.content and not item.content.startswith("[转写中"):
                 continue
-            self.enqueue(item_id)
+            self.enqueue(item.id)
             n += 1
         return n

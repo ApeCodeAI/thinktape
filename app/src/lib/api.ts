@@ -1,0 +1,210 @@
+/**
+ * ThinkTape daemon API client. Base URL + device key come from config.ts.
+ * On web (same origin) baseUrl is "" and no key is needed locally; on a phone
+ * over LAN, baseUrl + device key are set in Settings and sent on every request.
+ */
+import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
+import { Platform } from "react-native";
+import { getConn } from "./config";
+
+export type ItemType = "thought" | "bookmark" | "note";
+
+export interface UploadFilePart {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+  /** Web only: the browser File object from expo-image-picker. */
+  file?: any;
+}
+
+export interface UploadParts {
+  content?: string;
+  type?: string;
+  tags?: string[];
+  audio?: UploadFilePart | null;
+  images?: UploadFilePart[];
+  video?: UploadFilePart | null;
+}
+
+export interface Item {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  type: ItemType;
+  source: string;
+  status: string;
+  tags: string[];
+  bookmark_url: string | null;
+  summary: string | null;
+  has_audio: boolean;
+  has_images: boolean;
+  has_video: boolean;
+  content: string;
+  images: string[];
+}
+
+export interface ListResponse {
+  items: Item[];
+  limit: number;
+  offset: number;
+}
+
+export interface Stats {
+  total: number;
+  today: number;
+  by_type: Record<string, number>;
+  by_tag: Record<string, number>;
+}
+
+function base(): string {
+  return getConn().baseUrl;
+}
+
+/** Header map for authenticated requests (empty when no device key is set). */
+export function authHeaders(): Record<string, string> {
+  const k = getConn().deviceKey;
+  return k ? { "X-ThinkTape-Key": k } : {};
+}
+
+/** Headers to pass to expo-image / expo-video / expo-audio for remote media. */
+export function mediaHeaders(): Record<string, string> {
+  return authHeaders();
+}
+
+async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const res = await fetch(base() + path, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = `${res.status} ${j.detail}`;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export interface ListParams {
+  type?: string;
+  tag?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export const api = {
+  list(p: ListParams = {}): Promise<ListResponse> {
+    const qs = new URLSearchParams();
+    if (p.type) qs.set("type", p.type);
+    if (p.tag) qs.set("tag", p.tag);
+    if (p.q) qs.set("q", p.q);
+    qs.set("limit", String(p.limit ?? 30));
+    qs.set("offset", String(p.offset ?? 0));
+    return request<ListResponse>(`/api/items?${qs.toString()}`);
+  },
+  get: (id: string) => request<Item>(`/api/items/${id}`),
+  async upload(parts: UploadParts): Promise<Item> {
+    const fd = new FormData();
+    if (parts.content) fd.append("content", parts.content);
+    if (parts.type) fd.append("type", parts.type);
+    if (parts.tags?.length) fd.append("tags", parts.tags.join(","));
+
+    const appendFile = (field: string, p: UploadFilePart) => {
+      if (Platform.OS === "web" && p.file) {
+        fd.append(field, p.file, p.name);
+      } else {
+        // React Native multipart file descriptor.
+        fd.append(field, {
+          uri: p.uri,
+          name: p.name ?? "upload",
+          type: p.mimeType ?? "application/octet-stream",
+        } as any);
+      }
+    };
+
+    if (parts.audio) appendFile("audio", parts.audio);
+    (parts.images ?? []).forEach((img) => appendFile("images", img));
+    if (parts.video) appendFile("video", parts.video);
+
+    // Do NOT set Content-Type — fetch adds the multipart boundary itself.
+    const res = await fetch(base() + "/api/items/upload", {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: fd,
+    });
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const j = await res.json();
+        if (j?.detail) detail = `${res.status} ${j.detail}`;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return (await res.json()) as Item;
+  },
+
+  /**
+   * Native single-file upload via expo-file-system (avoids React Native's
+   * FormData file parts, which throw "Unsupported FormDataPart implementation"
+   * on the new architecture). One file → one item.
+   */
+  async uploadFileNative(
+    fileUri: string,
+    field: "audio" | "images" | "video",
+    mimeType: string,
+    meta: { content?: string; type?: string; tags?: string[] } = {},
+  ): Promise<Item> {
+    const parameters: Record<string, string> = {};
+    if (meta.content) parameters.content = meta.content;
+    if (meta.type) parameters.type = meta.type;
+    if (meta.tags?.length) parameters.tags = meta.tags.join(",");
+    const res = await uploadAsync(base() + "/api/items/upload", fileUri, {
+      httpMethod: "POST",
+      uploadType: FileSystemUploadType.MULTIPART,
+      fieldName: field,
+      mimeType,
+      parameters,
+      headers: authHeaders(),
+    });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`${res.status} ${(res.body || "").slice(0, 200)}`);
+    }
+    return JSON.parse(res.body) as Item;
+  },
+  create: (body: {
+    content: string;
+    type?: string;
+    tags?: string[];
+    bookmark_url?: string | null;
+  }) =>
+    request<Item>(`/api/items`, {
+      method: "POST",
+      body: JSON.stringify({ source: "app", ...body }),
+    }),
+  patch: (id: string, body: Partial<Pick<Item, "content" | "tags" | "status" | "type">>) =>
+    request<Item>(`/api/items/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (id: string) => request<{ ok: boolean }>(`/api/items/${id}`, { method: "DELETE" }),
+  stats: () => request<Stats>(`/api/stats`),
+  tags: () => request<{ tags: string[] }>(`/api/tags`),
+  pair: (name: string) =>
+    request<{ name: string; key: string }>(`/api/pair`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  health: () => request<{ ok: boolean }>(`/healthz`),
+  imageUrl: (id: string, name: string) => `${base()}/api/items/${id}/images/${name}`,
+  audioUrl: (id: string) => `${base()}/api/items/${id}/audio`,
+  videoUrl: (id: string) => `${base()}/api/items/${id}/video`,
+};

@@ -52,6 +52,10 @@ class Config:
         return self.data_dir / "items"
 
     @property
+    def assets_dir(self) -> Path:
+        return self.data_dir / "assets"
+
+    @property
     def db_path(self) -> Path:
         return self.data_dir / "thinktape.db"
 

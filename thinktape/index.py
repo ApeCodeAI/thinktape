@@ -1,7 +1,11 @@
-"""SQLite index — built from items/ on the fly, can always be rebuilt."""
+"""Canonical SQLite storage and derived query indexes."""
 from __future__ import annotations
 
+import asyncio
 import json
+import sqlite3
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Iterable
@@ -9,12 +13,35 @@ from typing import Iterable
 import aiosqlite
 
 from .links import extract_links
-from .models import Item, Stats
+from .models import Asset, Item, Stats
 
 _TZ_CST = timezone(timedelta(hours=8))
+STORAGE_CONTRACT_KEY = "storage_contract"
+STORAGE_CONTRACT_VALUE = "sqlite-db-first-v1"
+
+
+@dataclass
+class TransactionState:
+    committed: bool = False
+
+
+class ItemAlreadyExistsError(RuntimeError):
+    """A new item could not reserve its generated primary key."""
+
+
+class RecordingConflictError(RuntimeError):
+    """A recording id was reused with different immutable bytes."""
+
+
+RECORDING_STATUSES = frozenset({"pending", "queued", "running", "failed", "completed"})
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS storage_metadata (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS items (
     id            TEXT PRIMARY KEY,
     created_at    TEXT NOT NULL,
@@ -35,6 +62,41 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+
+CREATE TABLE IF NOT EXISTS item_tags (
+    item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    tag     TEXT NOT NULL,
+    PRIMARY KEY (item_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_item_tags_tag ON item_tags(tag);
+
+CREATE TABLE IF NOT EXISTS assets (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id           TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    path              TEXT NOT NULL UNIQUE,
+    kind              TEXT NOT NULL CHECK(kind IN ('audio', 'video', 'image')),
+    sha256            TEXT NOT NULL,
+    byte_size         INTEGER NOT NULL,
+    mime_type         TEXT,
+    original_filename TEXT,
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assets_item_kind ON assets(item_id, kind, id);
+
+-- Client recording receipts and the durable transcription job state.
+CREATE TABLE IF NOT EXISTS recordings (
+    recording_id          TEXT PRIMARY KEY,
+    item_id               TEXT NOT NULL UNIQUE,
+    checksum              TEXT NOT NULL,
+    byte_size             INTEGER NOT NULL CHECK(byte_size > 0),
+    transcription_status  TEXT NOT NULL CHECK(transcription_status IN
+                              ('pending', 'queued', 'running', 'failed', 'completed')),
+    attempts              INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+    last_error            TEXT,
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recordings_status ON recordings(transcription_status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
     id UNINDEXED,
@@ -80,13 +142,47 @@ class IndexDB:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self._db: aiosqlite.Connection | None = None
+        self._write_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         if self._db is not None:
             return
+        existed = self.db_path.exists()
+        if existed:
+            marker = await asyncio.to_thread(self._read_storage_contract, self.db_path)
+            if marker != STORAGE_CONTRACT_VALUE:
+                raise RuntimeError("database has no completed DB-first storage contract")
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA busy_timeout = 30000")
+        await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.executescript(SCHEMA)
+        if not existed:
+            await self._set_storage_contract_unlocked()
+        await self._rebuild_derived()
+        await self._db.commit()
+
+    async def connect_for_migration(self, *, dry_run: bool) -> None:
+        """Open current storage for explicit migration without trusting its marker."""
+        if self._db is not None:
+            return
+        if dry_run:
+            self._db = await aiosqlite.connect(":memory:")
+            if self.db_path.exists():
+                source = await aiosqlite.connect(
+                    f"file:{self.db_path.resolve()}?mode=ro", uri=True,
+                )
+                try:
+                    await source.backup(self._db)
+                finally:
+                    await source.close()
+        else:
+            self._db = await aiosqlite.connect(self.db_path)
+        self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA busy_timeout = 30000")
+        await self._db.execute("PRAGMA foreign_keys = ON")
+        await self._db.executescript(SCHEMA)
+        await self._rebuild_derived()
         await self._db.commit()
 
     async def close(self) -> None:
@@ -100,9 +196,166 @@ class IndexDB:
             raise RuntimeError("IndexDB not connected — call connect() first")
         return self._db
 
+    @property
+    def is_connected(self) -> bool:
+        return self._db is not None
+
+    @staticmethod
+    def _read_storage_contract(db_path: Path) -> str | None:
+        import sqlite3
+
+        connection = sqlite3.connect(f"file:{db_path.resolve()}?mode=ro", uri=True)
+        try:
+            row = connection.execute(
+                "SELECT value FROM storage_metadata WHERE key = ?",
+                (STORAGE_CONTRACT_KEY,),
+            ).fetchone()
+        except sqlite3.DatabaseError:
+            return None
+        finally:
+            connection.close()
+        return row[0] if row else None
+
+    async def set_storage_contract(self) -> None:
+        async with self.transaction():
+            await self._set_storage_contract_unlocked()
+
+    async def _set_storage_contract_unlocked(self) -> None:
+        await self.db.execute(
+            "INSERT OR REPLACE INTO storage_metadata(key, value) VALUES(?, ?)",
+            (STORAGE_CONTRACT_KEY, STORAGE_CONTRACT_VALUE),
+        )
+
+    @asynccontextmanager
+    async def transaction(self):
+        """Serialize a complete write transaction on the shared connection."""
+        async with self._write_lock:
+            await self.db.execute("BEGIN IMMEDIATE")
+            state = TransactionState()
+            try:
+                yield state
+            except BaseException:
+                await self._finish_db_call(self.db.rollback())
+                raise
+            else:
+                commit_task = asyncio.create_task(self.db.commit())
+                cancellation: asyncio.CancelledError | None = None
+                try:
+                    while not commit_task.done():
+                        try:
+                            await asyncio.shield(commit_task)
+                        except asyncio.CancelledError as exc:
+                            cancellation = exc
+                    commit_task.result()
+                except BaseException:
+                    await self._finish_db_call(self.db.rollback())
+                    raise
+                state.committed = True
+                if cancellation is not None:
+                    raise cancellation
+
+    @staticmethod
+    async def _finish_db_call(coro) -> None:
+        task = asyncio.create_task(coro)
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        await task
+
     # ---------- upsert / delete ----------
 
+    async def insert(self, item: Item) -> None:
+        async with self.transaction():
+            await self._insert(item)
+
+    async def _insert(self, item: Item) -> None:
+        try:
+            await self.db.execute(
+                """
+                INSERT INTO items(id, created_at, updated_at, type, source, status, tags,
+                                  bookmark_url, summary, has_audio, has_images, has_video,
+                                  telegram_message_id, content)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.id,
+                    item.created_at.isoformat(),
+                    item.updated_at.isoformat(),
+                    item.type,
+                    item.source,
+                    item.status,
+                    json.dumps(item.tags, ensure_ascii=False),
+                    item.bookmark_url,
+                    item.summary,
+                    int(item.has_audio),
+                    int(item.has_images),
+                    int(item.has_video),
+                    item.telegram_message_id,
+                    item.content,
+                ),
+            )
+        except aiosqlite.IntegrityError as exc:
+            if exc.sqlite_errorcode in {
+                sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY,
+                sqlite3.SQLITE_CONSTRAINT_UNIQUE,
+            }:
+                raise ItemAlreadyExistsError(item.id) from exc
+            raise
+        await self._refresh_derived(item)
+
+    async def update(self, item: Item) -> bool:
+        async with self.transaction():
+            return await self._update(item)
+
+    async def _update(self, item: Item) -> bool:
+        cursor = await self.db.execute(
+            """
+            UPDATE items SET
+                updated_at = ?,
+                type = ?,
+                source = ?,
+                status = ?,
+                tags = ?,
+                bookmark_url = ?,
+                summary = ?,
+                has_audio = ?,
+                has_images = ?,
+                has_video = ?,
+                telegram_message_id = ?,
+                content = ?
+            WHERE id = ?
+            """,
+            (
+                item.updated_at.isoformat(),
+                item.type,
+                item.source,
+                item.status,
+                json.dumps(item.tags, ensure_ascii=False),
+                item.bookmark_url,
+                item.summary,
+                int(item.has_audio),
+                int(item.has_images),
+                int(item.has_video),
+                item.telegram_message_id,
+                item.content,
+                item.id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return False
+        await self._refresh_derived(item)
+        return True
+
     async def upsert(self, item: Item) -> None:
+        async with self.transaction():
+            await self._upsert(item)
+
+    async def _upsert(self, item: Item) -> None:
+        # Index the union of explicit tags + inline #hashtags so filtering,
+        # stats, all_tags and FTS all see hashtags typed into the body.
+        all_tags = item.all_tags
         await self.db.execute(
             """
             INSERT INTO items(id, created_at, updated_at, type, source, status, tags,
@@ -140,19 +393,192 @@ class IndexDB:
                 item.content,
             ),
         )
+        await self._refresh_derived(item)
+
+    async def _refresh_derived(self, item: Item) -> None:
+        all_tags = item.all_tags
         await self.db.execute("DELETE FROM items_fts WHERE id = ?", (item.id,))
         await self.db.execute(
             "INSERT INTO items_fts(id, content, tags, bookmark_url) VALUES(?, ?, ?, ?)",
-            (item.id, item.content, " ".join(item.tags), item.bookmark_url or ""),
+            (item.id, item.content, " ".join(all_tags), item.bookmark_url or ""),
         )
+        await self.db.execute("DELETE FROM item_tags WHERE item_id = ?", (item.id,))
+        for tag in all_tags:
+            await self.db.execute(
+                "INSERT OR IGNORE INTO item_tags(item_id, tag) VALUES(?, ?)",
+                (item.id, tag),
+            )
         await self._refresh_links(item.id, item.content)
-        await self.db.commit()
+
+    async def rebuild_derived(self) -> int:
+        """Rebuild query-only tables from canonical SQLite item rows."""
+        async with self.transaction():
+            return await self._rebuild_derived()
+
+    async def _rebuild_derived(self) -> int:
+        await self.db.execute("DELETE FROM items_fts")
+        await self.db.execute("DELETE FROM item_tags")
+        await self.db.execute("DELETE FROM links")
+        async with self.db.execute("SELECT * FROM items") as cur:
+            items = [_row_to_item(row) for row in await cur.fetchall()]
+        for item in items:
+            await self._refresh_derived(item)
+        return len(items)
+
+    async def insert_assets(self, assets: Iterable[Asset]) -> None:
+        async with self.transaction():
+            await self._insert_assets(assets)
+
+    async def _insert_assets(self, assets: Iterable[Asset]) -> None:
+        for asset in assets:
+            cur = await self.db.execute(
+                """
+                INSERT INTO assets(item_id, path, kind, sha256, byte_size, mime_type,
+                                   original_filename, created_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    asset.item_id,
+                    asset.path,
+                    asset.kind,
+                    asset.sha256,
+                    asset.byte_size,
+                    asset.mime_type,
+                    asset.original_filename,
+                    asset.created_at.isoformat(),
+                ),
+            )
+            asset.id = cur.lastrowid
+
+    @staticmethod
+    def _recording_dict(row: aiosqlite.Row) -> dict:
+        if row is None:
+            return None
+        return {
+            "recording_id": row["recording_id"],
+            "item_id": row["item_id"],
+            "checksum": row["checksum"],
+            "byte_size": row["byte_size"],
+            "transcription_status": row["transcription_status"],
+            "attempts": row["attempts"],
+            "last_error": row["last_error"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    async def get_recording(self, recording_id: str) -> dict | None:
+        async with self.db.execute(
+            "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return self._recording_dict(row) if row else None
+
+    async def get_recording_for_item(self, item_id: str) -> dict | None:
+        async with self.db.execute(
+            "SELECT * FROM recordings WHERE item_id = ?", (item_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return self._recording_dict(row) if row else None
+
+    async def _insert_recording(
+        self,
+        recording_id: str,
+        item_id: str,
+        checksum: str,
+        byte_size: int,
+        *,
+        transcription_status: str,
+        created_at: datetime,
+    ) -> None:
+        if transcription_status not in RECORDING_STATUSES:
+            raise ValueError(f"invalid recording status: {transcription_status}")
+        await self.db.execute(
+            """
+            INSERT INTO recordings(
+                recording_id, item_id, checksum, byte_size, transcription_status,
+                attempts, last_error, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, 0, NULL, ?, ?)
+            """,
+            (
+                recording_id,
+                item_id,
+                checksum,
+                byte_size,
+                transcription_status,
+                created_at.isoformat(),
+                created_at.isoformat(),
+            ),
+        )
+
+    async def update_recording_status(
+        self,
+        recording_id: str,
+        status: str,
+        *,
+        last_error: str | None = None,
+        increment_attempt: bool = False,
+    ) -> dict | None:
+        if status not in RECORDING_STATUSES:
+            raise ValueError(f"invalid recording status: {status}")
+        async with self.transaction():
+            async with self.db.execute(
+                "SELECT attempts FROM recordings WHERE recording_id = ?",
+                (recording_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            attempts = row["attempts"] + (1 if increment_attempt else 0)
+            await self.db.execute(
+                """
+                UPDATE recordings
+                SET transcription_status = ?, attempts = ?, last_error = ?, updated_at = ?
+                WHERE recording_id = ?
+                """,
+                (status, attempts, last_error, datetime.now(timezone.utc).isoformat(), recording_id),
+            )
+        return await self.get_recording(recording_id)
+
+    async def list_recordings(self, statuses: Iterable[str] | None = None) -> list[dict]:
+        sql = "SELECT * FROM recordings"
+        params: list[str] = []
+        if statuses:
+            names = list(statuses)
+            sql += " WHERE transcription_status IN (" + ",".join("?" for _ in names) + ")"
+            params.extend(names)
+        sql += " ORDER BY created_at"
+        async with self.db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [self._recording_dict(row) for row in rows]
+
+    async def list_assets(self, item_id: str, *, kind: str | None = None) -> list[Asset]:
+        sql = "SELECT * FROM assets WHERE item_id = ?"
+        params: list = [item_id]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        sql += " ORDER BY id"
+        async with self.db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [
+            Asset(
+                id=row["id"], item_id=row["item_id"], path=row["path"],
+                kind=row["kind"], sha256=row["sha256"], byte_size=row["byte_size"],
+                mime_type=row["mime_type"], original_filename=row["original_filename"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+            for row in rows
+        ]
 
     async def delete(self, item_id: str) -> None:
+        async with self.transaction():
+            await self._delete(item_id)
+
+    async def _delete(self, item_id: str) -> None:
         await self.db.execute("DELETE FROM items WHERE id = ?", (item_id,))
         await self.db.execute("DELETE FROM items_fts WHERE id = ?", (item_id,))
+        await self.db.execute("DELETE FROM item_tags WHERE item_id = ?", (item_id,))
         await self.db.execute("DELETE FROM links WHERE source_id = ?", (item_id,))
-        await self.db.commit()
 
     # ---------- links ----------
 
@@ -217,6 +643,10 @@ class IndexDB:
             row = await cur.fetchone()
         return _row_to_item(row) if row else None
 
+    async def item_ids(self) -> list[str]:
+        async with self.db.execute("SELECT id FROM items ORDER BY id") as cur:
+            return [row["id"] for row in await cur.fetchall()]
+
     async def list(
         self,
         *,
@@ -235,9 +665,8 @@ class IndexDB:
             sql += " AND type = ?"
             params.append(type)
         if tag:
-            # tags column stores JSON list. crude LIKE match is OK for an index.
-            sql += " AND tags LIKE ?"
-            params.append(f'%"{tag}"%')
+            sql += " AND EXISTS (SELECT 1 FROM item_tags WHERE item_tags.item_id = items.id AND item_tags.tag = ?)"
+            params.append(tag)
         sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
@@ -309,32 +738,25 @@ class IndexDB:
         ) as cur:
             by_type = {row["type"]: row["n"] for row in await cur.fetchall()}
 
-        # Tag breakdown — manual aggregation since tags is JSON.
-        by_tag: dict[str, int] = {}
-        async with self.db.execute("SELECT tags FROM items WHERE status = 'active'") as cur:
-            async for row in cur:
-                for tag in json.loads(row["tags"] or "[]"):
-                    by_tag[tag] = by_tag.get(tag, 0) + 1
+        async with self.db.execute(
+            """
+            SELECT item_tags.tag, COUNT(*) AS n
+            FROM item_tags JOIN items ON items.id = item_tags.item_id
+            WHERE items.status = 'active'
+            GROUP BY item_tags.tag
+            """
+        ) as cur:
+            by_tag = {row["tag"]: row["n"] for row in await cur.fetchall()}
 
         return Stats(total=total, today=today, by_type=by_type, by_tag=by_tag)
 
     async def all_tags(self) -> list[str]:
-        seen: set[str] = set()
-        async with self.db.execute("SELECT tags FROM items WHERE status = 'active'") as cur:
-            async for row in cur:
-                for tag in json.loads(row["tags"] or "[]"):
-                    seen.add(tag)
-        return sorted(seen)
-
-    # ---------- rebuild ----------
-
-    async def rebuild(self, items: Iterable[Item]) -> int:
-        await self.db.execute("DELETE FROM items")
-        await self.db.execute("DELETE FROM items_fts")
-        await self.db.execute("DELETE FROM links")
-        await self.db.commit()
-        n = 0
-        for item in items:
-            await self.upsert(item)
-            n += 1
-        return n
+        async with self.db.execute(
+            """
+            SELECT DISTINCT item_tags.tag
+            FROM item_tags JOIN items ON items.id = item_tags.item_id
+            WHERE items.status = 'active'
+            ORDER BY item_tags.tag
+            """
+        ) as cur:
+            return [row["tag"] for row in await cur.fetchall()]

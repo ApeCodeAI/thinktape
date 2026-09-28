@@ -1,12 +1,12 @@
 [project]
 name = "thinktape"
 version = "2.0.1"
-description = "ThinkTape — voice-first, AI-native, agent-ready. Telegram Bot + Web UI + CLI for capturing thoughts, voice, images, links."
+description = "ThinkTape — voice-first, SQLite-backed personal capture with immutable media assets, Telegram Bot, Web UI, and CLI."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [{ name = "ApeCodeAI contributors", email = "me@apecode.ai" }]
-keywords = ["thinktape", "notes", "second-brain", "telegram-bot", "whisper", "ai", "agent", "cli"]
+keywords = ["thinktape", "notes", "sqlite", "immutable-assets", "telegram-bot", "whisper", "ai", "agent", "cli"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
