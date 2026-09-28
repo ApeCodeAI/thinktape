@@ -122,11 +122,12 @@ async def _remote_client(tmp_path):
     await brain.close()
 
 
-async def test_auth_disabled_until_a_device_is_paired(tmp_path):
-    # No devices paired → even a remote (LAN) request is allowed (backward compatible).
+async def test_remote_api_rejected_until_cli_pairing(tmp_path):
+    # Bootstrap via the local CLI; never expose an unauthenticated remote API.
     async with _remote_client(tmp_path) as ac:
         r = await ac.post("/api/items", json={"content": "no auth yet"})
-        assert r.status_code == 200
+        assert r.status_code == 401
+        assert (await ac.post("/api/pair", json={"name": "attacker"})).status_code == 401
 
 
 async def test_auth_enforced_after_pairing(tmp_path):
@@ -143,9 +144,16 @@ async def test_auth_enforced_after_pairing(tmp_path):
         assert (await ac.get("/healthz")).status_code == 200
 
 
-async def test_pair_endpoint_mints_key(client):
+async def test_pair_endpoint_requires_existing_key_even_on_loopback(client, tmp_path):
+    from thinktape.auth import DeviceKeyStore
+
     ac, _ = client
+    assert (await ac.post("/api/pair", json={"name": "laptop"})).status_code == 401
+    entry = DeviceKeyStore(tmp_path).add("bootstrap-cli")
     r = await ac.post("/api/pair", json={"name": "laptop"})
+    assert r.status_code == 401
+    r = await ac.post("/api/pair", json={"name": "laptop"},
+                      headers={"X-ThinkTape-Key": entry["key"]})
     assert r.status_code == 200
     data = r.json()
     assert data["name"] == "laptop" and len(data["key"]) > 10

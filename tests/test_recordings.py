@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from pathlib import Path
+from stat import S_IMODE
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -13,6 +14,14 @@ from thinktape.config import Config, WebConfig
 from thinktape.core import ThinkTape
 from thinktape.transcribe import TranscribeQueue
 from thinktape.web import create_app
+
+
+def test_device_keys_are_private_on_create_and_rotation(tmp_path: Path):
+    store = DeviceKeyStore(tmp_path)
+    store.add("iphone")
+    assert S_IMODE(store.path.stat().st_mode) == 0o600
+    store.add("second-device")
+    assert S_IMODE(store.path.stat().st_mode) == 0o600
 
 
 async def _client_for(
@@ -245,6 +254,23 @@ async def test_retry_after_restart_reuses_receipt_and_original_audio(tmp_path: P
     finally:
         await second_client.aclose()
         await second_brain.close()
+
+
+@pytest.mark.asyncio
+async def test_hard_delete_removes_recording_receipt_and_audio(tmp_path: Path):
+    key = DeviceKeyStore(tmp_path).add("iphone")["key"]
+    brain, client = await _client_for(tmp_path)
+    try:
+        response = await _upload(client, key, "iphone-disposable", b"disposable test audio")
+        assert response.status_code == 200
+        item_id = response.json()["item_id"]
+        assert await brain.hard_delete(item_id)
+        assert await brain.get_recording("iphone-disposable") is None
+        assert await brain.get(item_id) is None
+        assert not (tmp_path / "assets" / item_id).exists()
+    finally:
+        await client.aclose()
+        await brain.close()
 
 
 @pytest.mark.asyncio

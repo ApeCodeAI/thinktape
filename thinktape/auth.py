@@ -11,7 +11,9 @@ takes effect without restarting the daemon).
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,9 +42,21 @@ class DeviceKeyStore:
             return []
 
     def _save(self, devices: list[dict]) -> None:
-        self.path.write_text(
-            json.dumps(devices, ensure_ascii=False, indent=2), encoding="utf-8"
+        # NamedTemporaryFile uses private permissions; replace atomically so
+        # a crash cannot leave a partial or world-readable credentials file.
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=self.path.parent,
+            prefix=".device_keys-", delete=False,
         )
+        try:
+            with tmp:
+                json.dump(devices, tmp, ensure_ascii=False, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.chmod(tmp.name, 0o600)
+            os.replace(tmp.name, self.path)
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
 
     def keys(self) -> set[str]:
         return {d["key"] for d in self._load() if d.get("key")}

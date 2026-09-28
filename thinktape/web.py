@@ -89,15 +89,17 @@ def create_app(
     key_store = DeviceKeyStore(config.data_dir)
 
     async def _device_key_auth(request: Request, call_next):
-        # Local machine is always trusted. Remote clients need a paired key
-        # only once at least one device exists — so existing setups are unaffected.
+        # Provision the first key with `thinktape pair` on the trusted host.
+        # Never expose an unauthenticated remote bootstrap window.
         if request.url.path.startswith("/api/"):
-            if request.url.path == "/api/recordings" or request.url.path.startswith("/api/recordings/"):
+            if (request.url.path == "/api/pair"
+                    or request.url.path == "/api/recordings"
+                    or request.url.path.startswith("/api/recordings/")):
                 if not key_store.verify(request.headers.get(KEY_HEADER)):
                     return JSONResponse({"detail": "unauthorized device"}, status_code=401)
             else:
                 client_host = request.client.host if request.client else None
-                if not is_loopback(client_host) and not key_store.is_empty():
+                if not is_loopback(client_host):
                     if not key_store.verify(request.headers.get(KEY_HEADER)):
                         return JSONResponse({"detail": "unauthorized device"}, status_code=401)
         return await call_next(request)
