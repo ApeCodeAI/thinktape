@@ -82,6 +82,7 @@ uv run thinktape serve   # bot + web + 转写一起启动
 - 🤖 给你的 Telegram Bot 发消息（文字 / 语音 / 图片 / 链接）
 - 🌐 打开 <http://localhost:8080> 浏览
 - 💻 命令行：`uv run thinktape add "你的想法"`
+- 📱 iPhone 实体按键录音：见 [`docs/iphone-recording.md`](docs/iphone-recording.md)，先保存本地、失败可补传
 
 #### Docker（一行启动）
 
