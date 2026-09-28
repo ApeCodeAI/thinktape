@@ -17,6 +17,7 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app \
     THINKTAPE_DATA_DIR=/data
 
 # System deps:

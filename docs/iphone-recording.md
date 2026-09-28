@@ -1,136 +1,63 @@
 # iPhone durable recording capture
 
-This is the operator guide for sending an iPhone recording to ThinkTape without losing the original when the network is unavailable.
+The two **signed** Shortcuts built from `scripts/build_iphone_shortcuts.py` are:
 
-The implementation is deliberately **save first, upload second**:
+- [`shortcuts/thinktape-record.shortcut`](shortcuts/thinktape-record.shortcut) — `ThinkTape 录音`, for the Action Button.
+- [`shortcuts/thinktape-retry.shortcut`](shortcuts/thinktape-retry.shortcut) — `ThinkTape 重试上传`, run manually after reconnecting.
+
+They are in this one public repository. The unsigned `.unsigned.shortcut` sources alongside them are generated for inspection and re-signing. Rebuild on a Mac with `python3 scripts/build_iphone_shortcuts.py --sign` (Apple's `/usr/bin/shortcuts sign --mode anyone`). **Signing and structural checks on macOS do not prove iPhone import or execution.** Physical iPhone testing remains required; specifically, confirm import questions correctly populate each File/Folder picker and inspect the resulting actions before recording anything important.
+
+## What the pair does
 
 ```text
-Record audio
-  -> save the original file to On My iPhone/录音/待上传/
-  -> upload with the same recording_id
-  -> move the file to On My iPhone/录音/已上传/ only after stored: true
+Record Audio (Immediately; stop On Tap; Normal-quality M4A)
+  → ID = local yyyyMMdd-HHmmss + '-' + 12-digit random number (no false UTC Z)
+  → Set Name to ID.m4a
+  → Save complete file to Files / On My iPhone / 录音 / 待上传 (no overwrite)
+  → hash the saved file with SHA-256
+  → POST saved file and same ID as multipart form to /api/recordings
+  → require stored == true AND response recording_id == ID AND response checksum == local SHA-256
+  → only then Move File to On My iPhone / 录音 / 已上传 (no overwrite)
 ```
 
-The `待上传` copy is the recovery queue. A failed request must never delete it. The `已上传` copy is retained; it is not an upload backup unless the server has confirmed storage.
+The manual retry enumerates files in `待上传`, ignores non-M4A files, recovers the same ID from each filename, then performs the same hash, upload and three checks. It **never creates a new recording ID for an existing file**. Each file is moved only after confirmation; neither Shortcut has a Delete File action. A request error or timeout may stop the Shortcut; files already saved remain in `待上传`. If one retry fails, later items may not be attempted in that run; run it again after fixing the cause.
+
+The ID uses a twelve-digit random suffix, **not a UUID**. The local timestamp must not be represented with a `Z` (which denotes UTC). Example: `20260928-211530-123456789012.m4a`. The retry action splits the generated filename at the dot to recover `recording_id`. Do not rename pending files or put unrelated M4A files in this folder.
+
+`stored: true` means the asset is committed to ThinkTape's persistent store, **not** that transcription is done. The server checks repeated uploads with the same ID and bytes idempotently, and rejects a different file under the same ID with HTTP 409. The API also returns `checksum` (SHA-256 of the stored audio). The Shortcuts compare that value to the saved local file's hash before archiving. Missing or mismatched fields leave the original in `待上传`.
+
+## Import and configure on the iPhone
+
+1. In **Files → On My iPhone**, create `录音/待上传` and `录音/已上传`. Do not use iCloud Drive for the pending folder.
+2. Pair the phone **from the trusted Mac's loopback interface** using `POST /api/pair` (JSON body `{"name":"iphone-action-button"}`), or use an existing privately provisioned phone key. The Mac stores the key outside this repository; transfer it to the iPhone privately. Never paste the real key or private URL into a public issue, chat, or repository. The HTTP header is `X-ThinkTape-Key`. The pairing endpoint itself is not exposed to remote clients.
+3. Download each **signed** `.shortcut` file to the iPhone and import both in Shortcuts. For **each** import, answer the four setup questions:
+   - Select the appropriate `WFFolder` for `待上传` (record: **Save File**; retry: **Get Contents of Folder**).
+   - Enter the ThinkTape **HTTPS base URL with no trailing slash**, excluding `/api/recordings` (both shortcuts). The latter path is appended automatically.
+   - Enter the device key (both shortcuts). These answers live in the personal imported copies; the published files have empty URL and key fields.
+   - Select the `WFFolder` for **Move File**: `On My iPhone/录音/已上传` (both shortcuts).
+4. **Before using the Action Button**, open each imported Shortcut in the editor and verify those folder, URL and key values resolved into their intended action fields. Check Form field `audio` is a **File** magic variable from the saved file / Repeat Item, not text; Form field `recording_id` is text; no hand-written multipart `Content-Type` header is present. Confirm that **Move File** is nested inside all three `If` checks and has overwrite disabled. If an import question does not populate a Folder picker on your iOS version, select that picker manually in the editor; do not run it with a blank destination.
+5. Allow microphone, Files and network permissions when requested. Assign `ThinkTape 录音` to the iPhone Action Button, then make a **short throwaway recording**. Stop it manually, verify the actual `.m4a` exists locally, then check the response/archive. Run `ThinkTape 重试上传` manually after an offline test. Do not rely on iOS background automation as a guaranteed retry daemon.
+
+**Import gate:** macOS signing and static structure checks succeeded, but this Mac could not inspect the Shortcuts import GUI because Accessibility/Screen Recording permission is pending. Folder-question resolution and executable behavior are **not yet verified** on iPhone. Until verified there, treat these as signed candidate artifacts, not a proven one-tap capture system.
 
 ## Server contract
 
-The recording API is part of the same ThinkTape application as the web UI and CLI. It is not a private fork or a second deployment-only implementation.
-
-### Pair the phone once
-
-An operator creates a device key through the authenticated pairing endpoint:
-
-```http
-POST /api/pair
-Content-Type: application/json
-
-{"name":"iphone"}
-```
-
-The response contains the device key. Store it in the iPhone Shortcut as a private value. **Never commit or publish the key.** Every remote API request must send it as:
-
-```http
-X-ThinkTape-Key: <device-key>
-```
-
-### Upload
-
 ```http
 POST /api/recordings
-Content-Type: multipart/form-data
 X-ThinkTape-Key: <device-key>
+Content-Type: multipart/form-data  (automatically generated by Shortcuts)
 
-recording_id=<stable-id>
-audio=<complete .m4a file>
+recording_id=<filename without .m4a>
+audio=<saved complete .m4a file>
 ```
 
-The response contains:
+Response fields include `recording_id`, `checksum`, `byte_size`, `stored`, `item_id`, and `transcription_status`. The server also supports `GET /api/recordings/<recording_id>` and `POST /api/recordings/<recording_id>/retry` for inspection/retrying transcription, which are different from the phone's manual upload retry.
 
-```json
-{
-  "recording_id": "20260928T211530Z-<uuid>",
-  "item_id": "20260928-211530-ab12",
-  "checksum": "sha256...",
-  "byte_size": 12345,
-  "stored": true,
-  "transcription_status": "queued"
-}
-```
+## Acceptance check on the phone and server
 
-`stored: true` means that the complete audio has been verified and committed to ThinkTape's persistent asset store. It does **not** mean that transcription has finished.
+1. Normal capture: a local `.m4a` is created in `待上传` **before network upload**. The resulting item appears in ThinkTape; only after matching stored, ID and SHA-256 does the file move to `已上传`. The file remains on the iPhone in that archive folder.
+2. Offline capture: after manual stop, the recording remains in `待上传`. Reconnect and manually run `ThinkTape 重试上传`; the **same** filename/ID moves to `已上传` on success, without creating a second server item.
+3. Mismatched ID/checksum, failed auth, 409, timeout, or absent `stored`: file stays in `待上传`; diagnose without deleting or overwriting it.
+4. Play the server-side audio and check transcription or its retryable failure state. Successful file upload does not imply successful transcription.
 
-The phone must reuse the same `recording_id` when retrying. Replaying the same bytes is idempotent; replaying different bytes with the same ID is rejected with `409`.
-
-### Inspect and retry
-
-```http
-GET  /api/recordings/<recording_id>
-POST /api/recordings/<recording_id>/retry
-```
-
-The server keeps the original audio if transcription fails. Transcription status is durable (`pending`, `queued`, `running`, `failed`, `completed`) and is recovered after a service restart with a bounded retry count.
-
-## iPhone Files folders
-
-Create these folders in **Files → On My iPhone**:
-
-```text
-录音/
-├── 待上传/
-└── 已上传/
-```
-
-Use a filename containing the recording ID, for example:
-
-```text
-20260928T211530Z-550e8400-e29b-41d4-a716-446655440000.m4a
-```
-
-The filename is the recovery handle. The retry Shortcut extracts the ID from the filename and sends the same ID again.
-
-## Shortcut 1: `ThinkTape 录音`
-
-Create this Shortcut on the iPhone. Action names can vary slightly with the iOS language; the order and branching are the important parts.
-
-1. **Record Audio**. Use manual stop. Keep the returned audio as a variable named `Audio`.
-2. **Get Current Date**. Format it as `yyyyMMdd'T'HHmmss'Z'`.
-3. **Get UUID**. Combine date and UUID with a hyphen. This is `Recording ID`.
-4. **Set Name** for `Audio` to `Recording ID.m4a`.
-5. **Save File** to `On My iPhone/录音/待上传/`. Turn off **Ask Where to Save**. This is the first durable local-save point.
-6. Show a notification such as `录音已保存，正在上传`.
-7. **Get Contents of URL** for the ThinkTape URL plus `/api/recordings`:
-   - Method: `POST`
-   - Request body: `Form`
-   - Form field `recording_id`: the `Recording ID` text
-   - Form field `audio`: the saved file (not an in-memory recording variable)
-   - Header `X-ThinkTape-Key`: the private device key
-8. **Get Dictionary from Input** and read `stored`.
-9. If `stored` is exactly `true`, **Move File** from `待上传` to `已上传`, then notify `已上传 ThinkTape`.
-10. Otherwise, show `已保存，待上传` and do not move or delete the file.
-
-The Move action must be after the server response check. If the request errors or times out, Shortcuts may stop immediately; that is safe because the file is already in `待上传`.
-
-## Shortcut 2: `ThinkTape 补传录音`
-
-1. Get files from `On My iPhone/录音/待上传/`.
-2. Repeat with each file, in filename order.
-3. Get the file name and remove `.m4a` to recover `Recording ID`.
-4. POST the file and the same ID to `/api/recordings` with the same device key.
-5. Read `stored` from the response.
-6. Only when it is `true`, move the repeated file to `已上传/`.
-7. If one request fails, leave the current file and the remaining files in `待上传/`; show a notification and stop or continue according to the chosen Shortcut behavior.
-
-A Wi-Fi-connected, charger-connected, or scheduled personal automation may run this Shortcut once, but iOS background execution is not a guaranteed daemon. Keep the manual `补传录音` Shortcut.
-
-## ThinkPad acceptance check
-
-On ThinkPad, open the ThinkTape web URL and verify:
-
-1. A new item appears after upload.
-2. Its audio can be played from the item.
-3. The placeholder changes to the local Whisper transcript, or the item shows a retryable transcription failure while the audio remains present.
-4. Repeating the upload does not create a second item.
-5. A deliberate offline upload leaves the file in `待上传/`; running `补传录音` after reconnecting moves it to `已上传/`.
-
-The first physical test still requires the owner to grant iPhone microphone/files permissions, enter the device key in the Shortcut, and assign `ThinkTape 录音` to the iPhone Action Button. Those are device-local operations that cannot be verified from the Mac deployment host.
+No physical iPhone test, permissions, folder bookmark resolution, or live service write was performed during artifact generation.

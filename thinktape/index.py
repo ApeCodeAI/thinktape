@@ -575,6 +575,7 @@ class IndexDB:
             await self._delete(item_id)
 
     async def _delete(self, item_id: str) -> None:
+        await self.db.execute("DELETE FROM recordings WHERE item_id = ?", (item_id,))
         await self.db.execute("DELETE FROM items WHERE id = ?", (item_id,))
         await self.db.execute("DELETE FROM items_fts WHERE id = ?", (item_id,))
         await self.db.execute("DELETE FROM item_tags WHERE item_id = ?", (item_id,))
