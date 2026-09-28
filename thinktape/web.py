@@ -1,6 +1,7 @@
 """FastAPI web server."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import os
@@ -20,6 +21,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .auth import KEY_HEADER, DeviceKeyStore, is_loopback
 from .config import Config
 from .core import AssetIntegrityError, ThinkTape
+from .index import RecordingConflictError
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -90,10 +92,14 @@ def create_app(
         # Local machine is always trusted. Remote clients need a paired key
         # only once at least one device exists — so existing setups are unaffected.
         if request.url.path.startswith("/api/"):
-            client_host = request.client.host if request.client else None
-            if not is_loopback(client_host) and not key_store.is_empty():
+            if request.url.path == "/api/recordings" or request.url.path.startswith("/api/recordings/"):
                 if not key_store.verify(request.headers.get(KEY_HEADER)):
                     return JSONResponse({"detail": "unauthorized device"}, status_code=401)
+            else:
+                client_host = request.client.host if request.client else None
+                if not is_loopback(client_host) and not key_store.is_empty():
+                    if not key_store.verify(request.headers.get(KEY_HEADER)):
+                        return JSONResponse({"detail": "unauthorized device"}, status_code=401)
         return await call_next(request)
 
     # Auth added first (inner); CORS added last (outer) so 401s keep CORS headers.
@@ -230,6 +236,66 @@ def create_app(
             return _item_to_dict(item)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def _recording_response(recording: dict, item: Item) -> dict:
+        return {**_item_to_dict(item), **recording, "stored": True}
+
+    @app.post("/api/recordings")
+    async def upload_recording(
+        recording_id: str = Form(...),
+        audio: UploadFile = File(...),
+        content: str = Form(""),
+    ):
+        extension = Path(audio.filename or "").suffix.lower()
+        if extension not in {".m4a", ".wav", ".mp3", ".aac", ".caf", ".ogg", ".opus", ".flac"}:
+            raise HTTPException(status_code=422, detail="unsupported audio filename extension")
+        with tempfile.TemporaryDirectory(prefix="tt-recording-") as directory:
+            path = Path(directory) / ("audio" + extension)
+            def save_upload():
+                with path.open("wb") as output:
+                    shutil.copyfileobj(audio.file, output)
+            await asyncio.to_thread(save_upload)
+            try:
+                result = await brain.ingest_recording(recording_id, path, content=content)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except RecordingConflictError as exc:
+                raise HTTPException(status_code=409, detail=f"recording_id conflict: {exc}") from exc
+            except AssetIntegrityError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        recording = result.recording
+        if transcribe_queue is not None and recording["transcription_status"] == "pending":
+            recording = await brain.queue_recording(recording_id)
+            assert recording is not None
+            transcribe_queue.enqueue(result.item.id)
+        return _recording_response(recording, result.item)
+
+    @app.get("/api/recordings/{recording_id}")
+    async def get_recording(recording_id: str):
+        recording = await brain.get_recording(recording_id)
+        if recording is None:
+            raise HTTPException(status_code=404, detail="recording not found")
+        item = await brain.get(recording["item_id"])
+        if item is None:
+            raise HTTPException(status_code=409, detail="recording item unavailable")
+        return _recording_response(recording, item)
+
+    @app.post("/api/recordings/{recording_id}/retry")
+    async def retry_recording(recording_id: str):
+        try:
+            recording = await brain.retry_recording(
+                recording_id, worker_available=transcribe_queue is not None,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if recording is None:
+            raise HTTPException(status_code=404, detail="recording not found")
+        if transcribe_queue is not None and recording["transcription_status"] == "queued":
+            transcribe_queue.enqueue(recording["item_id"])
+        item = await brain.get(recording["item_id"])
+        if item is None:
+            raise HTTPException(status_code=409, detail="recording item unavailable")
+        return _recording_response(recording, item)
 
     @app.patch("/api/items/{item_id}")
     async def update_item(item_id: str, req: UpdateItemRequest):

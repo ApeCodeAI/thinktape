@@ -29,6 +29,13 @@ class ItemAlreadyExistsError(RuntimeError):
     """A new item could not reserve its generated primary key."""
 
 
+class RecordingConflictError(RuntimeError):
+    """A recording id was reused with different immutable bytes."""
+
+
+RECORDING_STATUSES = frozenset({"pending", "queued", "running", "failed", "completed"})
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS storage_metadata (
     key   TEXT PRIMARY KEY,
@@ -75,6 +82,21 @@ CREATE TABLE IF NOT EXISTS assets (
     created_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_assets_item_kind ON assets(item_id, kind, id);
+
+-- Client recording receipts and the durable transcription job state.
+CREATE TABLE IF NOT EXISTS recordings (
+    recording_id          TEXT PRIMARY KEY,
+    item_id               TEXT NOT NULL UNIQUE,
+    checksum              TEXT NOT NULL,
+    byte_size             INTEGER NOT NULL CHECK(byte_size > 0),
+    transcription_status  TEXT NOT NULL CHECK(transcription_status IN
+                              ('pending', 'queued', 'running', 'failed', 'completed')),
+    attempts              INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+    last_error            TEXT,
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recordings_status ON recordings(transcription_status);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
     id UNINDEXED,
@@ -132,6 +154,7 @@ class IndexDB:
                 raise RuntimeError("database has no completed DB-first storage contract")
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA busy_timeout = 30000")
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.executescript(SCHEMA)
         if not existed:
@@ -156,6 +179,7 @@ class IndexDB:
         else:
             self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA busy_timeout = 30000")
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.executescript(SCHEMA)
         await self._rebuild_derived()
@@ -425,6 +449,107 @@ class IndexDB:
                 ),
             )
             asset.id = cur.lastrowid
+
+    @staticmethod
+    def _recording_dict(row: aiosqlite.Row) -> dict:
+        if row is None:
+            return None
+        return {
+            "recording_id": row["recording_id"],
+            "item_id": row["item_id"],
+            "checksum": row["checksum"],
+            "byte_size": row["byte_size"],
+            "transcription_status": row["transcription_status"],
+            "attempts": row["attempts"],
+            "last_error": row["last_error"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    async def get_recording(self, recording_id: str) -> dict | None:
+        async with self.db.execute(
+            "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return self._recording_dict(row) if row else None
+
+    async def get_recording_for_item(self, item_id: str) -> dict | None:
+        async with self.db.execute(
+            "SELECT * FROM recordings WHERE item_id = ?", (item_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return self._recording_dict(row) if row else None
+
+    async def _insert_recording(
+        self,
+        recording_id: str,
+        item_id: str,
+        checksum: str,
+        byte_size: int,
+        *,
+        transcription_status: str,
+        created_at: datetime,
+    ) -> None:
+        if transcription_status not in RECORDING_STATUSES:
+            raise ValueError(f"invalid recording status: {transcription_status}")
+        await self.db.execute(
+            """
+            INSERT INTO recordings(
+                recording_id, item_id, checksum, byte_size, transcription_status,
+                attempts, last_error, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, 0, NULL, ?, ?)
+            """,
+            (
+                recording_id,
+                item_id,
+                checksum,
+                byte_size,
+                transcription_status,
+                created_at.isoformat(),
+                created_at.isoformat(),
+            ),
+        )
+
+    async def update_recording_status(
+        self,
+        recording_id: str,
+        status: str,
+        *,
+        last_error: str | None = None,
+        increment_attempt: bool = False,
+    ) -> dict | None:
+        if status not in RECORDING_STATUSES:
+            raise ValueError(f"invalid recording status: {status}")
+        async with self.transaction():
+            async with self.db.execute(
+                "SELECT attempts FROM recordings WHERE recording_id = ?",
+                (recording_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            attempts = row["attempts"] + (1 if increment_attempt else 0)
+            await self.db.execute(
+                """
+                UPDATE recordings
+                SET transcription_status = ?, attempts = ?, last_error = ?, updated_at = ?
+                WHERE recording_id = ?
+                """,
+                (status, attempts, last_error, datetime.now(timezone.utc).isoformat(), recording_id),
+            )
+        return await self.get_recording(recording_id)
+
+    async def list_recordings(self, statuses: Iterable[str] | None = None) -> list[dict]:
+        sql = "SELECT * FROM recordings"
+        params: list[str] = []
+        if statuses:
+            names = list(statuses)
+            sql += " WHERE transcription_status IN (" + ",".join("?" for _ in names) + ")"
+            params.extend(names)
+        sql += " ORDER BY created_at"
+        async with self.db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [self._recording_dict(row) for row in rows]
 
     async def list_assets(self, item_id: str, *, kind: str | None = None) -> list[Asset]:
         sql = "SELECT * FROM assets WHERE item_id = ?"

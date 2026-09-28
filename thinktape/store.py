@@ -104,6 +104,9 @@ class AssetStore:
         video_path: Path | None,
         created_at: datetime,
     ) -> StagedAssets:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.assets_dir.mkdir(parents=True, exist_ok=True)
+        self._fsync_dir(self.data_dir)
         final_dir = self.assets_dir / item_id
         sources: list[tuple[str, Path, str]] = []
         if audio_path is not None:
@@ -149,6 +152,8 @@ class AssetStore:
                     original_filename=src.name,
                     created_at=created_at,
                 ))
+            self._fsync_dir(staging_dir)
+            self._fsync_dir(staging_root)
         except BaseException:
             shutil.rmtree(staging_dir, ignore_errors=True)
             self._remove_empty_staging_root()
@@ -163,8 +168,15 @@ class AssetStore:
     def _promote_sync(self, staged: StagedAssets) -> None:
         if staged.final_dir.exists():
             raise FileExistsError(staged.final_dir)
+        self._fsync_dir(staged.staging_dir)
+        self._fsync_dir(staged.staging_dir.parent)
         staged.staging_dir.replace(staged.final_dir)
+        # Mark this before directory fsync: a later fsync failure must still
+        # remove the promoted directory when the surrounding DB transaction rolls back.
         staged.promoted = True
+        self._fsync_dir(staged.final_dir)
+        self._fsync_dir(self.assets_dir)
+        self._fsync_dir(self.data_dir)
         self._remove_empty_staging_root()
 
     async def promote_missing(self, staged: StagedAssets, destinations: set[str]) -> None:
@@ -262,6 +274,19 @@ class AssetStore:
                 digest.update(chunk)
                 byte_size += len(chunk)
         return digest.hexdigest(), byte_size
+
+    @staticmethod
+    def _fsync_dir(path: Path | None) -> None:
+        if path is None:
+            return
+        flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            flags |= os.O_DIRECTORY
+        fd = os.open(path, flags)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
     def _remove_empty_staging_root(self) -> None:
         root = self.assets_dir / ".staging"

@@ -2,12 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import Config
-from .index import IndexDB, ItemAlreadyExistsError, STORAGE_CONTRACT_VALUE
+from .index import (
+    IndexDB,
+    ItemAlreadyExistsError,
+    RecordingConflictError,
+    STORAGE_CONTRACT_VALUE,
+)
 from .links import find_concept_matches, make_snippet
 from .models import Asset, Item, Stats
 from .store import (
@@ -28,6 +35,17 @@ class MigrationRequiredError(RuntimeError):
 
 def _now() -> datetime:
     return datetime.now(_TZ_CST)
+
+
+_RECORDING_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+MAX_TRANSCRIPTION_ATTEMPTS = 3
+
+
+@dataclass(frozen=True)
+class RecordingIngestResult:
+    item: Item
+    recording: dict
+    created: bool
 
 
 class ThinkTape:
@@ -118,6 +136,200 @@ class ThinkTape:
                 await self.asset_store.discard(staged)
             raise
         return item
+
+    async def ingest_recording(
+        self,
+        recording_id: str,
+        audio_path: Path,
+        *,
+        content: str = "",
+        type: str = "thought",
+        source: str = "app",
+        tags: list[str] | None = None,
+    ) -> RecordingIngestResult:
+        """Durably store one client recording, with stable-id replay semantics."""
+        if not _RECORDING_ID_RE.fullmatch(recording_id or ""):
+            raise ValueError("invalid recording_id")
+        audio_path = Path(audio_path)
+        try:
+            checksum, byte_size = await asyncio.to_thread(
+                self.asset_store._digest_file, audio_path,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError("audio file is missing") from exc
+        if byte_size <= 0:
+            raise ValueError("audio must not be empty")
+        now = _now()
+        staged = None
+        transaction = None
+        result: RecordingIngestResult | None = None
+        try:
+            async with self.index.transaction() as transaction:
+                existing = await self.index.get_recording(recording_id)
+                if existing is not None:
+                    if (
+                        existing["checksum"] != checksum
+                        or existing["byte_size"] != byte_size
+                    ):
+                        raise RecordingConflictError(recording_id)
+                    item = await self.index.get(existing["item_id"])
+                    if item is None or item.status != "active":
+                        raise AssetIntegrityError("recording item unavailable")
+                    assets = await self.index.list_assets(item.id, kind="audio")
+                    if len(assets) != 1 or assets[0].sha256 != checksum:
+                        raise AssetIntegrityError("recording asset integrity check failed")
+                    await self.asset_store.verified_path(assets[0])
+                    await self._attach_assets(item)
+                    result = RecordingIngestResult(item, existing, False)
+                else:
+                    body = content if content.strip() else "[转写中…]"
+                    item = None
+                    while True:
+                        item_id = generate_id(now)
+                        candidate = Item(
+                            id=item_id,
+                            created_at=now,
+                            updated_at=now,
+                            type=type,
+                            source=source,
+                            tags=tags or [],
+                            status="active",
+                            content=body,
+                        )
+                        staged = await self.asset_store.stage(
+                            item_id,
+                            audio_path=audio_path,
+                            created_at=now,
+                        )
+                        candidate.has_audio = True
+                        try:
+                            await self.index._insert(candidate)
+                        except ItemAlreadyExistsError:
+                            await self.asset_store.discard(staged)
+                            staged = None
+                            continue
+                        item = candidate
+                        break
+                    if len(staged.assets) != 1 or (
+                        staged.assets[0].sha256 != checksum
+                        or staged.assets[0].byte_size != byte_size
+                    ):
+                        raise ValueError("audio changed during ingestion")
+                    await self.index._insert_assets(staged.assets)
+                    await self.index._insert_recording(
+                        recording_id,
+                        item.id,
+                        checksum,
+                        byte_size,
+                        transcription_status="completed" if content.strip() else "pending",
+                        created_at=now,
+                    )
+                    await self.asset_store.promote(staged)
+                    receipt = await self.index.get_recording(recording_id)
+                    assert receipt is not None
+                    result = RecordingIngestResult(item, receipt, True)
+        except BaseException:
+            if staged is not None and (transaction is None or not transaction.committed):
+                await self.asset_store.discard(staged)
+            raise
+        assert result is not None
+        return result
+
+    async def get_recording(self, recording_id: str) -> dict | None:
+        return await self.index.get_recording(recording_id)
+
+    async def queue_recording(self, recording_id: str) -> dict | None:
+        """Queue a pending recording once; a worker can recover missed notifications."""
+        async with self.index.transaction():
+            async with self.index.db.execute(
+                "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            if row["transcription_status"] == "pending" and row["attempts"] < MAX_TRANSCRIPTION_ATTEMPTS:
+                await self.index.db.execute(
+                    "UPDATE recordings SET transcription_status = 'queued', updated_at = ? WHERE recording_id = ?",
+                    (_now().isoformat(), recording_id),
+                )
+        return await self.index.get_recording(recording_id)
+
+    async def retry_recording(self, recording_id: str, *, worker_available: bool) -> dict | None:
+        """Reset a failed job once, without allowing permanent retry loops."""
+        async with self.index.transaction():
+            async with self.index.db.execute(
+                "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            if row["transcription_status"] in {"completed", "queued", "running"}:
+                return self.index._recording_dict(row)
+            if row["attempts"] >= MAX_TRANSCRIPTION_ATTEMPTS:
+                raise RuntimeError("transcription retry limit reached")
+            status = "queued" if worker_available else "pending"
+            await self.index.db.execute(
+                """
+                UPDATE recordings
+                SET transcription_status = ?, last_error = NULL, updated_at = ?
+                WHERE recording_id = ?
+                """,
+                (status, _now().isoformat(), recording_id),
+            )
+        return await self.index.get_recording(recording_id)
+
+    async def start_recording_transcription(self, recording_id: str) -> dict | None:
+        """Claim one queued job and increment its durable attempt counter."""
+        async with self.index.transaction():
+            async with self.index.db.execute(
+                "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            if row["transcription_status"] != "queued":
+                return None
+            if row["attempts"] >= MAX_TRANSCRIPTION_ATTEMPTS:
+                await self.index.db.execute(
+                    "UPDATE recordings SET transcription_status = 'failed', last_error = ?, updated_at = ? WHERE recording_id = ?",
+                    ("transcription retry limit reached", _now().isoformat(), recording_id),
+                )
+                return None
+            await self.index.db.execute(
+                """
+                UPDATE recordings
+                SET transcription_status = 'running', attempts = attempts + 1,
+                    last_error = NULL, updated_at = ?
+                WHERE recording_id = ? AND transcription_status = 'queued'
+                """,
+                (_now().isoformat(), recording_id),
+            )
+            async with self.index.db.execute(
+                "SELECT * FROM recordings WHERE recording_id = ?", (recording_id,)
+            ) as cur:
+                claimed = self.index._recording_dict(await cur.fetchone())
+        return claimed
+
+    async def finish_recording_transcription(
+        self, recording_id: str, *, error: str | None = None,
+    ) -> dict | None:
+        async with self.index.transaction():
+            await self.index.db.execute(
+                """UPDATE recordings SET transcription_status = ?, last_error = ?, updated_at = ?
+                   WHERE recording_id = ? AND transcription_status = 'running'""",
+                ("failed" if error else "completed", error, _now().isoformat(), recording_id),
+            )
+        return await self.index.get_recording(recording_id)
+
+    async def update_content_if_pending(self, item_id: str, content: str) -> bool:
+        """Never replace text entered while a transcription job was running."""
+        async with self.index.transaction():
+            item = await self.index.get(item_id)
+            if item is None or (item.content and not item.content.startswith("[转写中")):
+                return False
+            item.content = content
+            item.updated_at = _now()
+            return await self.index._update(item)
 
     async def update(self, item_id: str, **changes) -> Item | None:
         async with self.index.transaction():
