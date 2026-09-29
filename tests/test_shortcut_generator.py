@@ -28,6 +28,10 @@ def test_recording_response_dictionary_values_have_explicit_value_mode():
 def test_recording_id_random_suffix_is_built_from_ungrouped_chunks():
     workflow = capture()
     actions = workflow["WFWorkflowActions"]
+    dates = [a["WFWorkflowActionParameters"] for a in actions
+             if a["WFWorkflowActionIdentifier"] == "is.workflow.actions.date"]
+    assert len(dates) == 1
+    assert dates[0]["WFDateActionMode"] == "Current Date"
     randoms = [a["WFWorkflowActionParameters"] for a in actions
                if a["WFWorkflowActionIdentifier"] == "is.workflow.actions.number.random"]
     assert len(randoms) == 4
@@ -46,7 +50,14 @@ def test_retry_strips_legacy_grouping_commas_from_id_only():
     actions = workflow["WFWorkflowActions"]
     replacements = [a["WFWorkflowActionParameters"] for a in actions
                     if a["WFWorkflowActionIdentifier"] == "is.workflow.actions.text.replace"]
-    assert len(replacements) == 1
-    assert replacements[0]["WFReplaceTextFind"] == ","
-    assert replacements[0]["WFReplaceTextReplace"] == ""
-    assert replacements[0]["WFReplaceTextRegularExpression"] is False
+    comma = [p for p in replacements if p["WFReplaceTextFind"] == ","]
+    assert len(comma) == 1
+    assert comma[0]["WFReplaceTextReplace"] == ""
+    assert comma[0]["WFReplaceTextRegularExpression"] is False
+
+    prefix = [a["WFWorkflowActionParameters"] for a in actions
+              if a["WFWorkflowActionIdentifier"] == "is.workflow.actions.text.replace"
+              and a["WFWorkflowActionParameters"].get("WFReplaceTextRegularExpression") is True]
+    assert len(prefix) == 1
+    assert prefix[0]["WFReplaceTextFind"] == "^-"
+    assert prefix[0]["WFReplaceTextReplace"] == "iphone-"
