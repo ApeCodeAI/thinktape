@@ -155,7 +155,7 @@ def capture():
     b.add("comment", WFCommentActionText="Record -> save complete M4A locally -> POST saved file -> check stored, exact ID and SHA-256 -> move only on all matches. Install questions on iPhone. Never delete a recording.")
     recorded = b.add("recordaudio", WFRecordingStart="Immediately", WFRecordingEnd="On Tap",
                      WFRecordingCompression="Normal")
-    date = b.add("date")
+    date = b.add("date", WFDateActionMode="Current Date")
     stamp = b.add("format.date", WFDate=attachment(output(date, "Date")),
                   WFDateFormatStyle="Custom", WFDateFormat="yyyyMMdd-HHmmss",
                   WFTimeFormatStyle="None")
@@ -201,7 +201,13 @@ def retry():
     normalized = b.add("text.replace", WFInput=attachment(output(first, "Item from List")),
                        WFReplaceTextFind=",", WFReplaceTextReplace="",
                        WFReplaceTextRegularExpression=False)
-    upload(b, item, output(normalized, "Updated Text"))
+    # A buggy earlier build omitted the date action mode and created names
+    # such as `-665991610105.m4a`. Keep the original file and bytes, but make
+    # the request ID valid and stable by prefixing only a leading hyphen.
+    repaired = b.add("text.replace", WFInput=attachment(output(normalized, "Updated Text")),
+                     WFReplaceTextFind="^-", WFReplaceTextReplace="iphone-",
+                     WFReplaceTextRegularExpression=True)
+    upload(b, item, output(repaired, "Updated Text"))
     b.end_if(correct_type)
     b.add("repeat.each", GroupingIdentifier=group, WFControlFlowMode=2)
     return b.workflow("ThinkTape 重试上传")
