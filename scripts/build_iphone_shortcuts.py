@@ -121,12 +121,16 @@ def upload(b: Builder, file_ref, id_ref):
                             "WFSerializationType": "WFTokenAttachmentParameterState"}, item_type=5),
         ]),
     )
+    # Explicitly select a single dictionary value. Without this parameter,
+    # newer Shortcuts builds import the action as an incomplete "Get
+    # Dictionary Value" action and ask the user to configure its result mode
+    # at runtime.
     stored = b.add("getvalueforkey", WFInput=attachment(output(request, "Contents of URL")),
-                   WFDictionaryKey="stored")
+                   WFDictionaryKey="stored", WFGetDictionaryValueType="Value")
     checked_id = b.add("getvalueforkey", WFInput=attachment(output(request, "Contents of URL")),
-                       WFDictionaryKey="recording_id")
+                       WFDictionaryKey="recording_id", WFGetDictionaryValueType="Value")
     checksum = b.add("getvalueforkey", WFInput=attachment(output(request, "Contents of URL")),
-                      WFDictionaryKey="checksum")
+                      WFDictionaryKey="checksum", WFGetDictionaryValueType="Value")
 
     # All three tests are nested (logical AND), with the only Move inside the innermost branch.
     is_stored = b.start_if(output(stored, "Dictionary Value"), boolean=True)
@@ -155,11 +159,15 @@ def capture():
     stamp = b.add("format.date", WFDate=attachment(output(date, "Date")),
                   WFDateFormatStyle="Custom", WFDateFormat="yyyyMMdd-HHmmss",
                   WFTimeFormatStyle="None")
-    # No Z: this is local wall-clock time. Twelve random digits disambiguate captures.
-    random = b.add("number.random", WFRandomNumberMinimum=100000000000,
-                   WFRandomNumberMaximum=999999999999)
-    name = b.add("gettext", WFTextActionText=text(output(stamp, "Formatted Date"), "-",
-                                               output(random, "Random Number")))
+    # No Z: this is local wall-clock time. A twelve-digit Number interpolated
+    # into Text can acquire locale grouping commas (123,456,789,012), yielding
+    # an invalid recording ID. Four three-digit chunks cannot be grouped.
+    chunks = [b.add("number.random", WFRandomNumberMinimum=100,
+                    WFRandomNumberMaximum=999) for _ in range(4)]
+    name = b.add("gettext", WFTextActionText=text(
+        output(stamp, "Formatted Date"), "-",
+        *(output(chunk, "Random Number") for chunk in chunks),
+    ))
     renamed = b.add("setitemname", WFName=text(output(name, "Text"), ".m4a"),
                     WFInput=attachment(output(recorded, "Recorded Audio")))
     saved = b.add("documentpicker.save", WFInput=attachment(output(renamed, "Renamed Item")),
@@ -172,7 +180,7 @@ def capture():
 
 def retry():
     b = Builder()
-    b.add("comment", WFCommentActionText="Manual retry: enumerate pending local files; keep the filename ID and original bytes; archive only on all three server checks. Non-M4A files are ignored.")
+    b.add("comment", WFCommentActionText="Manual retry: enumerate pending local files; retain original bytes; strip legacy number-grouping commas from filename ID; archive only on all three server checks. Non-M4A files are ignored.")
     pending = b.add("file.getfoldercontents", Recursive=False)
     b.question(pending, "WFFolder", "Choose On My iPhone / 录音 / 待上传 (the SAME folder as ThinkTape 录音).")
     group = uid()
@@ -187,7 +195,13 @@ def retry():
                   WFTextSeparator="Custom", WFTextCustomSeparator=".")
     first = b.add("getitemfromlist", WFInput=attachment(output(split, "Split Text")),
                   WFItemSpecifier="First Item")
-    upload(b, item, output(first, "Item from List"))
+    # Earlier builds interpolated one large random Number, which iOS may
+    # format with grouping commas. Repair only the *request ID*, not the
+    # pending file or its bytes; retries still use a stable normalized ID.
+    normalized = b.add("text.replace", WFInput=attachment(output(first, "Item from List")),
+                       WFReplaceTextFind=",", WFReplaceTextReplace="",
+                       WFReplaceTextRegularExpression=False)
+    upload(b, item, output(normalized, "Updated Text"))
     b.end_if(correct_type)
     b.add("repeat.each", GroupingIdentifier=group, WFControlFlowMode=2)
     return b.workflow("ThinkTape 重试上传")
@@ -225,6 +239,7 @@ def verify(workflow):
     items = request["WFFormValues"]["Value"]["WFDictionaryFieldValueItems"]
     assert [(x["WFKey"]["Value"]["string"], x["WFItemType"]) for x in items] == [("recording_id", 0), ("audio", 5)]
     assert [actions[i]["WFWorkflowActionParameters"]["WFDictionaryKey"] for i in range(n.index("getvalueforkey"), n.index("getvalueforkey") + 3)] == ["stored", "recording_id", "checksum"]
+    assert [actions[i]["WFWorkflowActionParameters"]["WFGetDictionaryValueType"] for i in range(n.index("getvalueforkey"), n.index("getvalueforkey") + 3)] == ["Value", "Value", "Value"]
     assert any(q["ParameterKey"] == "WFFolder" for q in workflow["WFWorkflowImportQuestions"])
     for q in workflow["WFWorkflowImportQuestions"]:
         assert q["ParameterKey"] not in actions[q["ActionIndex"]]["WFWorkflowActionParameters"] or actions[q["ActionIndex"]]["WFWorkflowActionParameters"][q["ParameterKey"]] == ""
